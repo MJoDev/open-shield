@@ -1,0 +1,84 @@
+version: "2"
+
+# A deliberately small set of linters.
+#
+# The purpose of this file in CI is to catch defects, not to enforce a house
+# style — the house style is whatever gofmt says, and that is checked
+# separately. A linter that produces a page of advisory findings on every pull
+# request stops being read within a month, and then the one real finding scrolls
+# past with the rest.
+#
+# Everything enabled here reports something that is either a bug or a leak.
+#
+# misspell is deliberately absent. Every finding it produced on this codebase
+# was a false positive: it reads the Spanish in the demo paths and fixtures
+# ("productos", "buscar") as misspelled English. A linter that is wrong every
+# time it speaks is worse than no linter.
+
+run:
+  timeout: 5m
+  # The integration and end-to-end suites are behind build tags, so their files
+  # are invisible to a default analysis. Linting them matters as much as
+  # anything else: they hold HTTP clients and database connections.
+  build-tags:
+    - integration
+    - e2e
+
+linters:
+  default: none
+  enable:
+    # Unchecked errors. In this codebase an ignored error is usually an audit
+    # entry that was never written or a connection that was never closed.
+    - errcheck
+    # The compiler's own vet checks: printf verbs that do not match, struct
+    # tags that will never unmarshal, locks copied by value.
+    - govet
+    # Real bug patterns — nil dereferences, impossible conditions, misuse of
+    # the standard library — plus the simplification checks staticcheck folds
+    # in.
+    - staticcheck
+    # Assignments that are immediately overwritten. Almost always a mistake in
+    # error handling.
+    - ineffassign
+    # Dead code. A rule that is no longer in the chain should not still be
+    # sitting in the tree looking maintained.
+    - unused
+    # An HTTP response body that is never closed leaks a connection from the
+    # pool. The dashboard talks to the engine on every administrative change,
+    # and the engine sits on the request path.
+    - bodyclose
+    # rows.Err() after a query loop. Skipping it turns a mid-iteration database
+    # failure into a short result set that looks like real data — which, in a
+    # forensic log, is the worst possible shape for a bug to take.
+    - rowserrcheck
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+    staticcheck:
+      checks:
+        - all
+        # ST1000: package comment conventions. Several packages here open with
+        # a paragraph explaining a design decision rather than the
+        # "Package x ..." formula, and that is the more useful text.
+        - "-ST1000"
+        # ST1003: naming conventions for initialisms. The codebase writes
+        # IPRule, SQLi and XSS the way the technical document does.
+        - "-ST1003"
+
+  exclusions:
+    rules:
+      # A test closing a response body it is about to discard has nothing to do
+      # if the close fails, and threading a check through every one of them
+      # would bury what the test is actually asserting.
+      - path: _test\.go
+        linters:
+          - errcheck
+
+issues:
+  # Report everything, not the first few of each kind. A cap means that fixing
+  # one finding reveals others that were there all along, which reads as a
+  # regression when it is the opposite.
+  max-issues-per-linter: 0
+  max-same-issues: 0

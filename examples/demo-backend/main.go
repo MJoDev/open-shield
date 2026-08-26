@@ -75,7 +75,9 @@ func page(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, demoPage,
+	// A write that fails here means the client hung up mid-response; there is
+	// nothing left to say to them, and nothing to log that is not noise.
+	_, _ = fmt.Fprintf(w, demoPage,
 		html.EscapeString(requestID),
 		html.EscapeString(r.Method),
 		html.EscapeString(r.URL.Path),
