@@ -7,10 +7,12 @@
 # against actions/setup-go. One definition of what "the tests pass" means,
 # shared by this machine and the runner.
 
+# The demo stack is the base stack plus an override, layered with -f. See the
+# header of docker-compose.quickstart.yml for why it is not an `include:`.
 COMPOSE       ?= docker compose -f deploy/docker-compose.yml
-COMPOSE_DEMO  ?= docker compose -f deploy/docker-compose.quickstart.yml
-COMPOSE_E2E   ?= docker compose -f deploy/docker-compose.quickstart.yml -f deploy/docker-compose.e2e.yml
-COMPOSE_LOAD  ?= docker compose -f deploy/docker-compose.quickstart.yml -f deploy/docker-compose.load.yml
+COMPOSE_DEMO  ?= $(COMPOSE) -f deploy/docker-compose.quickstart.yml
+COMPOSE_E2E   ?= $(COMPOSE_DEMO) -f deploy/docker-compose.e2e.yml
+COMPOSE_LOAD  ?= $(COMPOSE_DEMO) -f deploy/docker-compose.load.yml
 COMPOSE_DEPS  ?= docker compose -f deploy/docker-compose.test.yml
 GO_IMAGE      ?= golang:1.25
 GO_RUN         = docker run --rm -v "$(CURDIR):/src" -w /src -v open-shield-gomod:/go/pkg/mod $(GO_IMAGE)

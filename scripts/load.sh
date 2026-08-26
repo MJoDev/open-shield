@@ -12,8 +12,7 @@
 # The stack must be up with the load overrides applied, or the rate limiter will
 # throttle the run and the numbers will describe the limiter:
 #
-#   docker compose -f deploy/docker-compose.quickstart.yml \
-#                  -f deploy/docker-compose.load.yml up -d --build
+#   make up-load
 #
 # k6 exits non-zero when a threshold in test/load/k6/thresholds.js is broken, so
 # this works as a CI gate as it stands.

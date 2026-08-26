@@ -1,9 +1,6 @@
 # Overrides for the load and stress runs.
 #
-#   docker compose -f deploy/docker-compose.quickstart.yml \
-#                  -f deploy/docker-compose.load.yml up -d --build
-#
-# Or just: make test-load
+#   make up-load
 #
 # Two things move, and both are about measuring the right thing.
 #

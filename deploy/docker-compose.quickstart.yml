@@ -5,7 +5,9 @@
 # RF-10:
 #
 #   cp deploy/.env.example deploy/.env   # then edit the two secrets
-#   docker compose -f deploy/docker-compose.quickstart.yml up -d --build
+#   docker compose -f deploy/docker-compose.yml #                  -f deploy/docker-compose.quickstart.yml up -d --build
+#
+# Or simply: make up
 #
 # Then:
 #   http://localhost        the protected application, behind the proxy
@@ -14,8 +16,14 @@
 # It is the base stack with one service added and the backend pointed at it, so
 # the demo and a real deployment run the same code and the same configuration.
 
-include:
-  - docker-compose.yml
+# Layered with -f rather than pulled in with `include:`.
+#
+# `include:` refuses to let the including file redefine an imported service,
+# and this file has to redefine `proxy` to point it at the bundled demo. Every
+# Docker Compose v2 release rejects that combination with
+# "services.proxy conflicts with imported resource" — so the stack would not
+# start at all for anyone on Compose v2. Plain -f merging is the mechanism
+# override files have always used, and it works everywhere.
 
 name: open-shield
 
