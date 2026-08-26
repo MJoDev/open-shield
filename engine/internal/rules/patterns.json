@@ -1,0 +1,103 @@
+{
+  "_comment": [
+    "Signature set for the sqli and xss rules (RF-03).",
+    "",
+    "This file is versioned separately from the code so signatures can be",
+    "updated without recompiling the engine, which is what §8.2 asks for when",
+    "it requires periodic rule updates. Point OS_PATTERNS_FILE at a copy of",
+    "this file to override it at runtime.",
+    "",
+    "Patterns are Go RE2 syntax: no backreferences, linear time, no catastrophic",
+    "backtracking. That matters here — these run on the request path, against",
+    "attacker-controlled input.",
+    "",
+    "Every pattern is scanned against the path, the query string, header values,",
+    "cookies and the (truncated) body, both raw and percent-decoded."
+  ],
+
+  "sqli": [
+    {
+      "id": "union_select",
+      "pattern": "(?i)\\bunion\\b[\\s\\S]{0,30}?\\bselect\\b",
+      "description": "UNION SELECT, the classic column-stealing injection"
+    },
+    {
+      "id": "quoted_tautology",
+      "pattern": "(?i)['\"`)]\\s*(or|and)\\s+['\"`]?[0-9a-z_]+['\"`]?\\s*(=|<>|!=|like)\\s*['\"`]?[0-9a-z_]+",
+      "description": "Quote-escape followed by an always-true comparison, e.g. ' OR '1'='1"
+    },
+    {
+      "id": "bare_tautology",
+      "pattern": "(?i)\\b(or|and)\\s+['\"`]?\\d+['\"`]?\\s*(=|<>|!=)\\s*['\"`]?\\d+",
+      "description": "OR 1=1 style tautology without quoting (RE2 has no backreferences, so this matches any numeric comparison, not only equal operands)"
+    },
+    {
+      "id": "stacked_query",
+      "pattern": "(?i);\\s*(drop|delete|update|insert|alter|truncate|create|grant)\\s+",
+      "description": "Statement terminator followed by a second, destructive statement"
+    },
+    {
+      "id": "comment_terminator",
+      "pattern": "(?i)['\"`]\\s*(--|#|/\\*)",
+      "description": "Quote followed by a comment marker, used to swallow the rest of the query"
+    },
+    {
+      "id": "time_based_blind",
+      "pattern": "(?i)\\b(sleep|pg_sleep|benchmark|waitfor\\s+delay|dbms_pipe\\.receive_message)\\s*[(']",
+      "description": "Time-delay function used for blind injection"
+    },
+    {
+      "id": "schema_probe",
+      "pattern": "(?i)\\b(information_schema|pg_catalog|sysobjects|mysql\\.user|pg_shadow)\\b",
+      "description": "Direct reference to a database catalogue"
+    },
+    {
+      "id": "file_access",
+      "pattern": "(?i)\\b(load_file|into\\s+(out|dump)file|pg_read_file|xp_cmdshell)\\b",
+      "description": "SQL function that reads or writes the host filesystem"
+    }
+  ],
+
+  "xss": [
+    {
+      "id": "script_tag",
+      "pattern": "(?i)<\\s*script\\b",
+      "description": "Opening <script> tag"
+    },
+    {
+      "id": "script_close",
+      "pattern": "(?i)<\\s*/\\s*script\\s*>",
+      "description": "Closing </script> tag, used to break out of an inline script"
+    },
+    {
+      "id": "javascript_uri",
+      "pattern": "(?i)\\b(javascript|vbscript)\\s*:",
+      "description": "Script URI in an attribute such as href or src"
+    },
+    {
+      "id": "event_handler",
+      "pattern": "(?i)\\bon(error|load|click|mouseover|mouseenter|focus|blur|submit|toggle|animationstart)\\s*=",
+      "description": "Inline event handler attribute"
+    },
+    {
+      "id": "dangerous_tag",
+      "pattern": "(?i)<\\s*(iframe|object|embed|applet|svg|base|form|meta)\\b",
+      "description": "Tag that can execute or redirect when injected into a page"
+    },
+    {
+      "id": "cookie_theft",
+      "pattern": "(?i)\\bdocument\\s*\\.\\s*(cookie|location|write)\\b",
+      "description": "DOM access typical of a payload exfiltrating a session"
+    },
+    {
+      "id": "js_sink",
+      "pattern": "(?i)\\b(eval|setTimeout|setInterval|Function)\\s*\\(\\s*['\"`]",
+      "description": "Script executed from a string literal"
+    },
+    {
+      "id": "data_uri_html",
+      "pattern": "(?i)data:\\s*text/html",
+      "description": "HTML delivered through a data: URI"
+    }
+  ]
+}

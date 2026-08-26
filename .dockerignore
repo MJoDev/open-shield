@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+deploy/.env
+docs
+scripts
+node_modules
+dashboard/web/node_modules
+dashboard/web/dist
+bin
+*.md

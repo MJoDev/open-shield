@@ -1,0 +1,9 @@
+# Normalise line endings on commit; let Git decide in the working copy.
+* text=auto
+
+# These are executed inside Linux containers: CRLF breaks the shebang.
+*.sh text eol=lf
+proxy/docker-entrypoint.sh text eol=lf
+Dockerfile text eol=lf
+*/Dockerfile text eol=lf
+Makefile text eol=lf

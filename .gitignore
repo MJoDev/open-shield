@@ -1,0 +1,26 @@
+# Secrets and local configuration
+.env
+deploy/.env
+*.pem
+*.key
+
+# Go build output
+/bin/
+*.test
+*.out
+
+# Node / Vite
+node_modules/
+dashboard/web/dist/
+dashboard/web/.vite/
+*.tsbuildinfo
+
+# The embedded copy of the built SPA is generated at image build time.
+# Only the placeholder index.html is versioned (see dashboard/api/web/dist/).
+dashboard/api/web/dist/*
+!dashboard/api/web/dist/index.html
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

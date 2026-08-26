@@ -1,0 +1,79 @@
+# The protected site.
+#
+# ${OS_BACKEND_URL} and ${OS_SERVER_NAME} are substituted at container start
+# from the environment (§5.5). Nothing in this file is edited by hand inside a
+# running container.
+
+server {
+    listen 80 default_server;
+    server_name ${OS_SERVER_NAME};
+
+    # Docker's embedded DNS. Resolving the backend at request time rather than
+    # at startup means a backend container that restarts with a new address is
+    # picked up without reloading the proxy.
+    resolver 127.0.0.11 ipv6=off valid=10s;
+    set $backend_url "${OS_BACKEND_URL}";
+
+    # The proxy's own liveness check. It is answered before the access phase, so
+    # it stays up even when the engine is down — which is exactly when an
+    # operator needs to know which component actually failed.
+    location = /__openshield/health {
+        access_log off;
+        default_type application/json;
+        return 200 '{"status":"ok","component":"proxy"}';
+    }
+
+    location / {
+        # Every request is judged here (RF-01). See proxy/lua/openshield.lua.
+        access_by_lua_block {
+            require("openshield").access()
+        }
+
+        proxy_pass $backend_url$request_uri;
+
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-ID      $request_id;
+
+        # WebSocket and SSE passthrough, so a protected application that uses
+        # them keeps working behind the proxy.
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+
+        proxy_connect_timeout 5s;
+        proxy_send_timeout    60s;
+        proxy_read_timeout    60s;
+
+        # The backend's own identifying headers are not forwarded to the
+        # client: the point of a reverse proxy is that the origin is not
+        # directly addressable.
+        proxy_hide_header X-Powered-By;
+        proxy_hide_header Server;
+    }
+}
+
+# --- TLS (RF-04) -------------------------------------------------------------
+#
+# Deferred to v1.1. The anchor point is here: certbot writes its challenge into
+# the webroot below, and the certificate paths follow its layout, so enabling
+# TLS is a matter of issuing a certificate and uncommenting this block.
+#
+# location ^~ /.well-known/acme-challenge/ {
+#     root /var/www/certbot;
+# }
+#
+# server {
+#     listen 443 ssl;
+#     http2 on;
+#     server_name ${OS_SERVER_NAME};
+#
+#     ssl_certificate     /etc/letsencrypt/live/${OS_SERVER_NAME}/fullchain.pem;
+#     ssl_certificate_key /etc/letsencrypt/live/${OS_SERVER_NAME}/privkey.pem;
+#     ssl_protocols       TLSv1.2 TLSv1.3;
+#     ssl_prefer_server_ciphers off;
+#
+#     ... same location / block as above ...
+# }

@@ -1,0 +1,114 @@
+# open-shield — the base stack.
+#
+# Protects a backend you already run. Point OS_BACKEND_URL at it in .env and
+# make sure it is reachable from the openshield network.
+#
+#   cp deploy/.env.example deploy/.env   # then edit the secrets
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# For a self-contained demo with a sample application included, use
+# docker-compose.quickstart.yml instead.
+#
+# Only the proxy and the dashboard publish ports. The engine, Redis and
+# PostgreSQL are reachable only from inside the network — minimum privilege
+# (§8.2): nothing is exposed that does not have to be.
+
+name: open-shield
+
+services:
+  proxy:
+    build:
+      # The proxy carries no Go code, so its context is its own directory
+      # rather than the repository root the two Go services need.
+      context: ../proxy
+    image: open-shield-proxy:${OS_VERSION:-dev}
+    restart: unless-stopped
+    ports:
+      - "${OS_HTTP_PORT:-80}:80"
+    environment:
+      OS_BACKEND_URL: ${OS_BACKEND_URL}
+      OS_SERVER_NAME: ${OS_SERVER_NAME:-_}
+      OS_ENGINE_URL: http://engine:8080
+      OS_DECIDE_TIMEOUT_MS: ${OS_DECIDE_TIMEOUT_MS:-150}
+      OS_MAX_BODY_INSPECT_BYTES: ${OS_MAX_BODY_INSPECT_BYTES:-8192}
+      OS_FAIL_MODE: ${OS_FAIL_MODE:-open}
+    depends_on:
+      engine:
+        condition: service_healthy
+    networks: [openshield]
+
+  engine:
+    build:
+      context: ..
+      dockerfile: engine/Dockerfile
+      args:
+        VERSION: ${OS_VERSION:-dev}
+    image: open-shield-engine:${OS_VERSION:-dev}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      OS_POSTGRES_DSN: postgres://${POSTGRES_USER:-openshield}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-openshield}?sslmode=disable
+      OS_REDIS_ADDR: redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    networks: [openshield]
+
+  dashboard-api:
+    build:
+      context: ..
+      dockerfile: dashboard/api/Dockerfile
+      args:
+        VERSION: ${OS_VERSION:-dev}
+    image: open-shield-dashboard:${OS_VERSION:-dev}
+    restart: unless-stopped
+    ports:
+      - "${OS_DASHBOARD_PORT:-8081}:8081"
+    env_file: .env
+    environment:
+      OS_POSTGRES_DSN: postgres://${POSTGRES_USER:-openshield}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-openshield}?sslmode=disable
+      OS_REDIS_ADDR: redis:6379
+      OS_ENGINE_URL: http://engine:8080
+    depends_on:
+      engine:
+        condition: service_healthy
+    networks: [openshield]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Rate-limit counters and the live event channel. Both are reconstructible,
+    # so persistence is off: a Redis restart costs a moment of counting, not
+    # data. The audit log is the durable record, and it lives in PostgreSQL.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [openshield]
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-openshield}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-openshield}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openshield} -d ${POSTGRES_DB:-openshield}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [openshield]
+
+volumes:
+  db-data:
+
+networks:
+  openshield:
+    driver: bridge

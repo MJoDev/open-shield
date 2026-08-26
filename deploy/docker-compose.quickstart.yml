@@ -1,0 +1,40 @@
+# open-shield — self-contained demo stack.
+#
+# The full system plus a sample application to protect, so it can be brought up
+# on a machine with nothing installed but Docker. This is the single command of
+# RF-10:
+#
+#   cp deploy/.env.example deploy/.env   # then edit the two secrets
+#   docker compose -f deploy/docker-compose.quickstart.yml up -d --build
+#
+# Then:
+#   http://localhost        the protected application, behind the proxy
+#   http://localhost:8081   the dashboard
+#
+# It is the base stack with one service added and the backend pointed at it, so
+# the demo and a real deployment run the same code and the same configuration.
+
+include:
+  - docker-compose.yml
+
+name: open-shield
+
+services:
+  demo-backend:
+    build:
+      context: ..
+      dockerfile: examples/demo-backend/Dockerfile
+    image: open-shield-demo-backend:${OS_VERSION:-dev}
+    restart: unless-stopped
+    # Not published: reaching it directly would bypass the proxy, which is the
+    # exact exposure this system exists to close (RF-01).
+    expose:
+      - "3000"
+    networks: [openshield]
+
+  proxy:
+    environment:
+      OS_BACKEND_URL: http://demo-backend:3000
+    depends_on:
+      demo-backend:
+        condition: service_healthy
