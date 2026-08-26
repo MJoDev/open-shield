@@ -1,0 +1,40 @@
+# Overrides for the load and stress runs.
+#
+#   docker compose -f deploy/docker-compose.quickstart.yml \
+#                  -f deploy/docker-compose.load.yml up -d --build
+#
+# Or just: make test-load
+#
+# Two things move, and both are about measuring the right thing.
+#
+# The rate limit is effectively switched off. The engine identifies a client by
+# the proxy's remote_addr (proxy/lua/openshield.lua:141), so every virtual user
+# k6 runs arrives from one address and shares one bucket. With the default 100
+# per 60 seconds the run would throttle itself within the first second, and the
+# result would be a measurement of the rate limiter rather than of the system's
+# latency — while the 429s broke the availability threshold at the same time.
+#
+# RF-05 is therefore *not* covered here. It is covered end to end, against a
+# real limit, by TestRateLimitingThrottlesABurst and by scripts/smoke.sh.
+#
+# The audit buffer is left at its default on purpose. The point of a load run is
+# partly to find out whether the queue between the request path and the database
+# keeps up; raising it would hide exactly the answer being looked for. Watch the
+# dropped counter on /api/v1/status after a run.
+
+name: open-shield
+
+services:
+  engine:
+    environment:
+      # Large enough that the limiter never fires, small enough that the sorted
+      # set behind it stays a sorted set rather than an unbounded allocation.
+      # Named OS_LOAD_* rather than OS_RATELIMIT_*: Compose interpolates from
+      # deploy/.env, where OS_RATELIMIT_REQUESTS is already set, so a default
+      # written against that name would never apply and this whole file would
+      # be a no-op.
+      OS_RATELIMIT_REQUESTS: ${OS_LOAD_RATELIMIT_REQUESTS:-1000000}
+      OS_RATELIMIT_WINDOW_S: 60
+      # Warnings only: a debug log at several thousand requests per second
+      # measures the logger.
+      OS_LOG_LEVEL: warn
