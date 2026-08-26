@@ -195,6 +195,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Clamped here as well as inside the store, so that the limit reported back
+	// is the limit that was applied. A client paginating on a number the store
+	// quietly reduced would skip every entry between the two.
+	filter = filter.Normalized()
+
 	entries, err := s.repo.List(r.Context(), filter)
 	if err != nil {
 		s.fail(w, "listing audit entries", err)

@@ -63,9 +63,14 @@ type Filter struct {
 	Offset    int
 }
 
-// normalized clamps pagination to sane bounds so a dashboard query cannot ask
+// Normalized clamps pagination to sane bounds so a dashboard query cannot ask
 // the database for the entire history.
-func (f Filter) normalized() Filter {
+//
+// It is exported because a caller has to be able to report the limit that was
+// actually applied. A response that echoes back a limit the store silently
+// reduced makes a paginating client step over the entries it never received.
+// Applying it twice is the same as applying it once.
+func (f Filter) Normalized() Filter {
 	if f.Limit <= 0 {
 		f.Limit = 50
 	}
