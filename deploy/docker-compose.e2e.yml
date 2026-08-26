@@ -1,0 +1,36 @@
+# Overrides for the end-to-end suite.
+#
+#   docker compose -f deploy/docker-compose.quickstart.yml \
+#                  -f deploy/docker-compose.e2e.yml up -d --build
+#
+# Or just: make test-e2e
+#
+# Only one setting changes, and it changes because of how rate limiting
+# identifies a client.
+#
+# The engine counts requests per source address, taken from the proxy's
+# remote_addr (proxy/lua/openshield.lua) rather than from X-Forwarded-For — a
+# header the client controls is worthless for this. Every request the suite
+# makes therefore arrives from the same address and lands in the same bucket:
+# the corpus alone is over thirty requests, and with the default 100 per 60
+# seconds the later checks would start getting 429 from a rule that was working
+# perfectly.
+#
+# The window is shortened rather than the limit merely raised, so that RF-05 is
+# still tested against a real limit — TestRateLimitingThrottlesABurst reads
+# these two values and bursts past whatever it finds. A short window also lets
+# the budget refill between runs instead of poisoning the next one.
+
+# The values are literal, and the variables that can override them are named
+# differently from the deployment settings on purpose. Writing
+# ${OS_RATELIMIT_REQUESTS:-200} here would look right and do nothing: Compose
+# interpolates from deploy/.env, where that variable is already set, so the
+# default never applies and the override silently keeps the production value.
+
+name: open-shield
+
+services:
+  engine:
+    environment:
+      OS_RATELIMIT_REQUESTS: ${OS_E2E_RATELIMIT_REQUESTS:-200}
+      OS_RATELIMIT_WINDOW_S: ${OS_E2E_RATELIMIT_WINDOW_S:-5}
