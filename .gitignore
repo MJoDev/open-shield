@@ -9,6 +9,10 @@ deploy/.env
 *.test
 *.out
 
+# Test artefacts written into the working directory by a run
+coverage.out
+load-summary.json
+
 # Node / Vite
 node_modules/
 dashboard/web/dist/
