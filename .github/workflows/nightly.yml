@@ -39,9 +39,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -70,7 +70,7 @@ jobs:
       # A failing input is written to testdata/fuzz/. It is the whole value of
       # the run: it reproduces the failure in one line, and belongs in the
       # repository as a permanent regression case.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: fuzz-corpus
@@ -105,9 +105,9 @@ jobs:
       OS_TEST_REDIS_ADDR: localhost:6379
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -133,9 +133,9 @@ jobs:
     env:
       OS_LOAD_PROFILE: ${{ inputs.profile || 'full' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -188,7 +188,7 @@ jobs:
           docker compose -f deploy/docker-compose.quickstart.yml \
                          -f deploy/docker-compose.load.yml logs --no-color --tail 500
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: load-summary-${{ env.OS_LOAD_PROFILE }}
