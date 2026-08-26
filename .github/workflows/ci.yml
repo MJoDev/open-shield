@@ -1,0 +1,289 @@
+# The gate. Every job here must be green before a pull request can be merged.
+#
+# The levels and what each one defends are set out in
+# docs/estrategia-de-pruebas.md. In short:
+#
+#   lint         formatting, vet, and the linters that find defects
+#   unit         the whole suite under the race detector, no dependencies
+#   vuln         known CVEs in the dependencies and the toolchain
+#   integration  PostgreSQL and Redis for real, plus the coverage floors
+#   web          the React dashboard: types, tests, build
+#   stack        the real containers — smoke, end-to-end, load, tamper demo
+#
+# The Go jobs call the same Makefile targets a developer runs, with GO_RUN and
+# GO_RUN_HOST emptied so they execute natively against actions/setup-go instead
+# of inside a container. One definition of "the tests pass", shared by this
+# runner and the machine the change was written on.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A second push to the same branch makes the first run irrelevant. Cancelling it
+# frees a runner rather than spending minutes proving something about a commit
+# nobody will merge.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25"
+  NODE_VERSION: "22"
+
+jobs:
+  lint:
+    name: Formato y linters
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Estos archivos no están formateados:"
+            echo "$unformatted"
+            echo
+            echo "Ejecuta: gofmt -w ."
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.6.2
+          args: --timeout 5m
+
+  unit:
+    name: Tests unitarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # No services, no containers, no fixtures on disk. If this job ever needs
+      # one, a build tag is missing somewhere.
+      - name: go test
+        run: make test GO_RUN=
+
+      # The chain is appended to from every request handler at once, and two
+      # goroutines sealing against the same head would fork it. The race
+      # detector is the only thing that catches that before production does.
+      - name: go test -race
+        run: make test-race GO_RUN=
+
+  vuln:
+    name: Vulnerabilidades conocidas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  integration:
+    name: Integración y cobertura
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: openshield
+          POSTGRES_PASSWORD: openshield
+          POSTGRES_DB: openshield_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U openshield -d openshield_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    env:
+      OS_TEST_POSTGRES_DSN: postgres://openshield:openshield@localhost:5432/openshield_test?sslmode=disable
+      OS_TEST_REDIS_ADDR: localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # -p 1 because the suite spans three directories — Go's internal rule
+      # puts the engine and dashboard cases beside their packages — and all of
+      # them share one database. Run in parallel they truncate each other's
+      # tables mid-test.
+      - name: Tests de integración
+        run: go test -tags=integration -p 1 -count=1 ./...
+
+      # Coverage is measured here, with the dependencies up. Measuring it in
+      # the unit job would put internal/audit at about half its real figure:
+      # its SQL store is most of the file, and none of it runs without a
+      # database.
+      - name: Cobertura
+        run: |
+          go test -tags=integration -p 1 -count=1 \
+            -covermode=atomic -coverprofile=coverage.out -coverpkg=./... ./... > /dev/null
+          ./scripts/coverage.sh coverage.out
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 7
+
+  web:
+    name: Dashboard React
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: dashboard/web/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:run
+      # The build is part of the gate because the dashboard binary embeds its
+      # output: a frontend that does not compile is a backend that ships an
+      # empty page.
+      - run: npm run build
+
+  stack:
+    name: Stack completo
+    runs-on: ubuntu-latest
+    # Well clear of the ~8 minutes this takes, but short enough that a hung
+    # container does not hold a runner for six hours.
+    timeout-minutes: 25
+    env:
+      # Must match deploy/docker-compose.e2e.yml. scripts/smoke.sh bursts past
+      # whatever it is told the limit is.
+      OS_RATELIMIT_REQUESTS: "200"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # There is no deploy/.env in the repository and there must never be one.
+      # It is generated here with throwaway secrets.
+      #
+      # The bcrypt hash is written through the binary's own -hash-password,
+      # which prints the line already escaped. Every '$' has to be doubled in
+      # this file: Compose reads a lone '$' as a variable reference, so a raw
+      # hash reaches the container empty, with no error, and every sign-in
+      # fails. It is the single most expensive trap in this repository.
+      - name: Generar deploy/.env
+        run: |
+          set -euo pipefail
+
+          password="$(openssl rand -hex 16)"
+          echo "OS_ADMIN_PASSWORD=$password" >> "$GITHUB_ENV"
+
+          # -hash-password prints the line already escaped. It is appended
+          # rather than substituted in place: a bcrypt hash is full of '$' and
+          # '/', and every one of them is a metacharacter to sed.
+          hash_line="$(go run ./dashboard/api/cmd/api -hash-password "$password" \
+            | grep '^OS_ADMIN_PASSWORD_HASH=')"
+
+          grep -v -e '^POSTGRES_PASSWORD=' \
+                  -e '^OS_SESSION_SECRET=' \
+                  -e '^OS_ADMIN_PASSWORD_HASH=' deploy/.env.example > deploy/.env
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "OS_SESSION_SECRET=$(openssl rand -hex 32)"
+            echo "$hash_line"
+          } >> deploy/.env
+
+          # Prove the escaping survived, rather than finding out eight minutes
+          # later at the login screen with nothing in the logs to explain it.
+          grep -q 'OS_ADMIN_PASSWORD_HASH=\$\$2' deploy/.env
+
+      - name: Levantar el stack
+        run: make up-e2e
+
+      - name: Tests end-to-end
+        run: make test-e2e GO_RUN_HOST=
+
+      # The quick check a person runs by hand after a deployment, kept as a gate
+      # because it is the one output a human actually reads. It runs after the
+      # end-to-end suite rather than before: both burst the rate limit from the
+      # same source address, and the suite already waits out its own window on
+      # the way out.
+      #
+      # OS_RATELIMIT_REQUESTS is set at the job level so smoke.sh bursts past
+      # the limit this stack is actually running (200, from
+      # docker-compose.e2e.yml) rather than past its own default of 100 — which
+      # it would never reach, and would report as a rate limit that is not
+      # working.
+      - name: Prueba de humo
+        run: make smoke
+
+      # The engine is recreated with the load settings before k6 runs. Without
+      # it the rate limit the end-to-end suite needs (200 per 5s, so RF-05 is
+      # tested against a real limit) would throttle a run offering 50 requests
+      # a second from a single address, and the result would describe the
+      # limiter rather than the system.
+      - name: Reconfigurar el stack para la carga
+        run: make up-load
+
+      - name: Carga (perfil corto)
+        run: make test-load
+
+      # Last, deliberately: it corrupts the audit log on purpose to prove the
+      # chain detects it. The stack is thrown away with the runner.
+      - name: Detección de manipulación
+        run: make tamper-demo
+
+      - name: Logs de los contenedores
+        if: failure()
+        run: |
+          docker compose -f deploy/docker-compose.quickstart.yml \
+                         -f deploy/docker-compose.e2e.yml logs --no-color --tail 300
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-summary
+          path: load-summary.json
+          retention-days: 7
+          if-no-files-found: ignore
