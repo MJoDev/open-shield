@@ -1,42 +1,45 @@
 # open-shield
 
-Proxy inverso con motor de reglas y trazabilidad forense verificable.
+**English** · [Español](README.es.md)
 
-Se instala delante de cualquier aplicación web con un solo comando. Toda petición
-pasa por un motor de reglas antes de llegar al servidor de origen, y cada
-decisión queda registrada en un log de auditoría encadenado por hashes: si
-alguien altera o borra un registro, la verificación lo detecta y señala la
-entrada exacta.
+Reverse proxy with a rules engine and verifiable forensic traceability.
 
-Implementación del [documento técnico de decisiones](docs/documento-tecnico.md).
-Sin dependencias propietarias y sin acoplamiento a ninguna infraestructura
-concreta: el mismo stack se instala igual en cualquier VPS.
+It sits in front of any web application and installs with a single command.
+Every request passes through a rules engine before it reaches the origin
+server, and every decision is written to an audit log chained by hashes: if
+someone alters or deletes a record, verification detects it and points at the
+exact entry.
+
+Implementation of the [technical decisions document](docs/technical-document.md).
+No proprietary dependencies and no coupling to any particular infrastructure:
+the same stack installs the same way on any VPS.
 
 ---
 
-## Arranque
+## Getting started
 
-Se necesita únicamente Docker.
+Docker is the only requirement.
 
 ```bash
-git clone <este-repositorio> && cd open-shield
+git clone https://github.com/MJoDev/open-shield.git && cd open-shield
 cp deploy/.env.example deploy/.env
 ```
 
-Genera los tres secretos que `deploy/.env` marca como obligatorios:
+Generate the three secrets that `deploy/.env` marks as mandatory:
 
 ```bash
 openssl rand -base64 24     # POSTGRES_PASSWORD
 openssl rand -hex 32        # OS_SESSION_SECRET
 
-make hash-password PASSWORD='tu contraseña'   # OS_ADMIN_PASSWORD_HASH
+make hash-password PASSWORD='your password'   # OS_ADMIN_PASSWORD_HASH
 ```
 
-> El comando imprime la línea ya escapada. Los `$$` del hash son intencionales:
-> Docker Compose interpreta un `$` suelto como una variable, y pegar el hash sin
-> escapar hace que el contenedor reciba un valor vacío sin ningún error visible.
+> The command prints the line already escaped. The `$$` in the hash are
+> intentional: Docker Compose reads a lone `$` as a variable, and pasting the
+> hash unescaped makes the container receive an empty value with no visible
+> error.
 
-Levanta el stack completo, con una aplicación de demostración incluida:
+Bring up the full stack, demo application included:
 
 ```bash
 make up
@@ -44,107 +47,107 @@ make up
 
 | | |
 |---|---|
-| `http://localhost` | la aplicación protegida, detrás del proxy |
-| `http://localhost:8081` | el dashboard |
+| `http://localhost` | the protected application, behind the proxy |
+| `http://localhost:8081` | the dashboard |
 
-Para proteger tu propia aplicación en lugar de la demo, apunta `OS_BACKEND_URL`
-a ella en `deploy/.env` y usa `make up-prod`.
+To protect your own application instead of the demo, point `OS_BACKEND_URL` at
+it in `deploy/.env` and use `make up-prod`.
 
-### Compruébalo
+### Check it
 
 ```bash
-curl -i localhost/                                # 200 — pasa al backend
-curl -i "localhost/?id=1'%20OR%20'1'='1"          # 403 — regla sqli
-curl -i -X POST localhost/ -d "q=<script>x</script>"   # 403 — regla xss, en el cuerpo
+curl -i localhost/                                # 200 — passes to the backend
+curl -i "localhost/?id=1'%20OR%20'1'='1"          # 403 — sqli rule
+curl -i -X POST localhost/ -d "q=<script>x</script>"   # 403 — xss rule, in the body
 ```
 
-O de una vez, incluyendo rate limiting e integridad del log:
+Or all at once, including rate limiting and log integrity:
 
 ```bash
-OS_ADMIN_PASSWORD='tu contraseña' make smoke
+OS_ADMIN_PASSWORD='your password' make smoke
 ```
 
 ---
 
-## Qué hace
+## What it does
 
 | | |
 |---|---|
-| **RF-01** | Intercepta toda conexión antes del servidor de origen |
-| **RF-02** | Enruta hacia el backend configurado |
-| **RF-03** | Filtra SQLi y XSS en ruta, query, cabeceras, cookies **y cuerpo** |
-| **RF-05** | Limita peticiones por IP en ventana deslizante |
-| **RF-06** | Registra cada conexión con integridad verificable |
-| **RF-09** | Dashboard en tiempo real por WebSocket |
-| **RF-10** | Instalación completa con un único comando |
+| **RF-01** | Intercepts every connection before the origin server |
+| **RF-02** | Routes to the configured backend |
+| **RF-03** | Filters SQLi and XSS in path, query, headers, cookies **and body** |
+| **RF-05** | Limits requests per IP over a sliding window |
+| **RF-06** | Logs every connection with verifiable integrity |
+| **RF-09** | Real-time dashboard over WebSocket |
+| **RF-10** | Full installation with a single command |
 
-Diferidos a la v1.1, con sus puntos de anclaje ya preparados: TLS y renovación
-automática de certificados (RF-04), notificación ante tráfico anómalo (RF-07) y
-balanceo de carga entre instancias (RF-08).
+Deferred to v1.1, with their anchor points already in place: TLS and automatic
+certificate renewal (RF-04), notification on anomalous traffic (RF-07), and
+load balancing across instances (RF-08).
 
 ---
 
-## Arquitectura
+## Architecture
 
 ```
 internet ──► proxy (OpenResty)
                │  access_by_lua → POST /v1/decide   [keepalive]
                ▼
             engine (Go)
-               │  ipblock → ratelimit → sqli → xss     ← primer bloqueo gana
-               ├──► Redis        ventana deslizante del rate limit
+               │  ipblock → ratelimit → sqli → xss     ← first block wins
+               ├──► Redis        rate limit sliding window
                │
-               └──► escritor único ──► PostgreSQL   cadena de hashes
-                                   └──► Redis Pub/Sub
-                                             │
-            dashboard-api (Go) ◄──────────────┘
-               └── REST + WebSocket + React embebido
+               └──► single writer ──► PostgreSQL   hash chain
+                                  └──► Redis Pub/Sub
+                                            │
+            dashboard-api (Go) ◄─────────────┘
+               └── REST + WebSocket + embedded React
 ```
 
-Cada petición lleva un `X-Request-ID` que la acompaña desde el proxy hasta la
-entrada de auditoría y hasta el backend, de modo que una sola petición puede
-seguirse por los tres.
+Every request carries an `X-Request-ID` that travels with it from the proxy to
+the audit entry and on to the backend, so a single request can be followed
+across all three.
 
-**Desarrollo propio:** el motor de reglas, el esquema de trazabilidad forense y
-el dashboard. **Infraestructura de terceros:** Nginx/OpenResty, Redis y
-PostgreSQL, que se usan tal cual y sin lógica de negocio dentro.
+**Built here:** the rules engine, the forensic traceability scheme, and the
+dashboard. **Third-party infrastructure:** Nginx/OpenResty, Redis and
+PostgreSQL, used as they come and with no business logic inside them.
 
-### Estructura
+### Layout
 
 ```
-internal/          modelo, cadena de auditoría, eventos, configuración
-engine/            motor de reglas y decisión
-dashboard/api/     REST, WebSocket y SPA embebido
-dashboard/web/     interfaz React
-proxy/             configuración OpenResty y el hook Lua
-migrations/        esquema de PostgreSQL, aplicado al arrancar
-examples/          aplicación de demostración
-deploy/            docker-compose y .env.example
-scripts/           prueba de humo y demostración forense
+internal/          model, audit chain, events, configuration
+engine/            rules and decision engine
+dashboard/api/     REST, WebSocket and embedded SPA
+dashboard/web/     React interface
+proxy/             OpenResty configuration and the Lua hook
+migrations/        PostgreSQL schema, applied at startup
+examples/          demo application
+deploy/            docker-compose and .env.example
+scripts/           smoke test and forensic demo
 ```
 
 ---
 
-## Trazabilidad forense
+## Forensic traceability
 
-Cada entrada del log guarda el hash de la anterior. Verificar consiste en
-recorrer la cadena y recalcular:
+Every log entry stores the hash of the previous one. Verifying means walking
+the chain and recomputing:
 
 ```bash
 curl -s -b cookies.txt localhost:8081/api/v1/audit/verify
 # {"ok":true,"checked":1432}
 ```
 
-La base de datos además rechaza cualquier `UPDATE` o `DELETE` sobre el log. Eso
-hace la manipulación incómoda; la cadena la hace **detectable**, que es lo que
-importa frente a un atacante que ya controla la base de datos:
+The database also rejects any `UPDATE` or `DELETE` against the log. That makes
+tampering inconvenient; the chain makes it **detectable**, which is what
+matters against an attacker who already controls the database:
 
 ```bash
-OS_ADMIN_PASSWORD='tu contraseña' make tamper-demo
+OS_ADMIN_PASSWORD='your password' make tamper-demo
 ```
 
-El script desactiva el trigger, reescribe un bloqueo como si hubiera sido
-permitido, y vuelve a verificar:
+The script disables the trigger, rewrites a block as if it had been allowed,
+and verifies again:
 
 ```json
 {
@@ -156,45 +159,45 @@ permitido, y vuelve a verificar:
 }
 ```
 
-Borrar una entrada tampoco pasa desapercibido: los hashes restantes siguen
-siendo válidos por separado, pero el enlace con la siguiente se rompe.
+Deleting an entry does not go unnoticed either: the remaining hashes stay valid
+on their own, but the link to the next one breaks.
 
-**Qué no se guarda:** el cuerpo de las peticiones y las cabeceras `Cookie` y
-`Authorization`. Se inspeccionan, no se almacenan. Un log append-only con
-retención larga es el peor lugar posible para contraseñas y tokens de sesión.
-Lo que sí queda es el fragmento acotado que disparó el bloqueo, que es la
-evidencia de *por qué* se bloqueó.
+**What is not stored:** request bodies and the `Cookie` and `Authorization`
+headers. They are inspected, not kept. An append-only log with long retention
+is the worst possible place for passwords and session tokens. What does remain
+is the bounded fragment that triggered the block, which is the evidence of
+*why* it was blocked.
 
 ---
 
-## Desarrollo
+## Development
 
-No hace falta Go instalado: todo corre en contenedor.
+Go does not need to be installed: everything runs in a container.
 
 ```bash
 make test        # go vet + tests
-make test-race   # con detector de carreras
-make logs        # seguir los logs
-make clean       # detener y BORRAR el log de auditoría
+make test-race   # with the race detector
+make logs        # follow the logs
+make clean       # stop and DELETE the audit log
 ```
 
-Para trabajar en la interfaz con recarga en caliente:
+To work on the interface with hot reload:
 
 ```bash
-cd dashboard/web && npm install && npm run dev   # proxeado a localhost:8081
+cd dashboard/web && npm install && npm run dev   # proxied to localhost:8081
 ```
 
 ---
 
-## Documentación
+## Documentation
 
-- [Decisiones de implementación](docs/decisiones-implementacion.md) — dónde y
-  por qué el código se aparta del documento técnico
-- [Manual de operación](docs/manual-operacion.md) — despliegue, ajuste y
-  diagnóstico
-- [Documento técnico original](docs/documento-tecnico.md)
-  ([English](docs/technical-document.md))
+- [Technical document](docs/technical-document.md)
+  ([Español](docs/documento-tecnico.md))
+- [Implementation decisions](docs/decisiones-implementacion.md) — where and why
+  the code departs from the technical document *(in Spanish)*
+- [Operations manual](docs/manual-operacion.md) — deployment, tuning and
+  diagnostics *(in Spanish)*
 
-## Licencia
+## License
 
-Pendiente de definir.
+[Apache License 2.0](LICENSE).
