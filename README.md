@@ -2,6 +2,8 @@
 
 **English** · [Español](README.es.md)
 
+[![CI](https://github.com/MJoDev/open-shield/actions/workflows/ci.yml/badge.svg)](https://github.com/MJoDev/open-shield/actions/workflows/ci.yml)
+
 Reverse proxy with a rules engine and verifiable forensic traceability.
 
 It sits in front of any web application and installs with a single command.
@@ -123,7 +125,8 @@ proxy/             OpenResty configuration and the Lua hook
 migrations/        PostgreSQL schema, applied at startup
 examples/          demo application
 deploy/            docker-compose and .env.example
-scripts/           smoke test and forensic demo
+scripts/           smoke test, forensic demo, load runner
+test/              shared attack corpus, integration, end-to-end and load suites
 ```
 
 ---
@@ -175,8 +178,9 @@ is the bounded fragment that triggered the block, which is the evidence of
 Go does not need to be installed: everything runs in a container.
 
 ```bash
-make test        # go vet + tests
+make test        # go vet + unit tests, no dependencies
 make test-race   # with the race detector
+make lint        # gofmt, go vet, golangci-lint
 make logs        # follow the logs
 make clean       # stop and DELETE the audit log
 ```
@@ -189,6 +193,44 @@ cd dashboard/web && npm install && npm run dev   # proxied to localhost:8081
 
 ---
 
+## Testing
+
+Six levels, all of them required to merge a pull request. The full strategy is
+in [the testing document](docs/estrategia-de-pruebas.md) *(in Spanish)*.
+
+```bash
+make test              # unit tests and fuzzing seeds — no dependencies
+make test-integration  # real PostgreSQL and Redis, brought up and torn down
+make cover             # per-package coverage against test/coverage-floors.txt
+
+make up-e2e                                # the stack, configured for the suite
+OS_ADMIN_PASSWORD='...' make test-e2e      # proxy → engine → log → dashboard
+
+make up-load           # the stack, configured for measurement
+make test-load         # k6: latency, availability and detection under load
+
+make test-web          # the React dashboard
+```
+
+The attack corpus in `test/corpus/` is shared by three levels — the rule chain
+in isolation, the live stack through the proxy, and the k6 attack scenario — so
+a vector added once is covered by all three and cannot quietly stop being.
+
+The load run states the number §8.2 budgets at under 50 ms:
+
+```
+                                p50          p95
+Backend directly              0.48 ms     1.04 ms
+Through the proxy             2.01 ms     7.60 ms
+----------------------------------------------------
+Added overhead                1.52 ms     6.56 ms
+```
+
+k6 exits non-zero when a threshold is broken, so the requirement is a gate
+rather than a paragraph.
+
+---
+
 ## Documentation
 
 - [Technical document](docs/technical-document.md)
@@ -197,6 +239,8 @@ cd dashboard/web && npm install && npm run dev   # proxied to localhost:8081
   the code departs from the technical document *(in Spanish)*
 - [Operations manual](docs/manual-operacion.md) — deployment, tuning and
   diagnostics *(in Spanish)*
+- [Testing strategy](docs/estrategia-de-pruebas.md) — what each level defends,
+  how to run it, and how CI gates a pull request *(in Spanish)*
 
 ## License
 

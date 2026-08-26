@@ -2,6 +2,8 @@
 
 [English](README.md) · **Español**
 
+[![CI](https://github.com/MJoDev/open-shield/actions/workflows/ci.yml/badge.svg)](https://github.com/MJoDev/open-shield/actions/workflows/ci.yml)
+
 Proxy inverso con motor de reglas y trazabilidad forense verificable.
 
 Se instala delante de cualquier aplicación web con un solo comando. Toda petición
@@ -122,7 +124,8 @@ proxy/             configuración OpenResty y el hook Lua
 migrations/        esquema de PostgreSQL, aplicado al arrancar
 examples/          aplicación de demostración
 deploy/            docker-compose y .env.example
-scripts/           prueba de humo y demostración forense
+scripts/           prueba de humo, demostración forense y lanzador de carga
+test/              corpus de ataques, integración, end-to-end y carga
 ```
 
 ---
@@ -174,8 +177,9 @@ evidencia de *por qué* se bloqueó.
 No hace falta Go instalado: todo corre en contenedor.
 
 ```bash
-make test        # go vet + tests
+make test        # go vet + tests unitarios, sin dependencias
 make test-race   # con detector de carreras
+make lint        # gofmt, go vet, golangci-lint
 make logs        # seguir los logs
 make clean       # detener y BORRAR el log de auditoría
 ```
@@ -188,6 +192,45 @@ cd dashboard/web && npm install && npm run dev   # proxeado a localhost:8081
 
 ---
 
+## Pruebas
+
+Seis niveles, y los seis son obligatorios para fusionar un pull request. La
+estrategia completa está en [el documento de pruebas](docs/estrategia-de-pruebas.md).
+
+```bash
+make test              # unitarios y semillas de fuzzing — sin dependencias
+make test-integration  # PostgreSQL y Redis reales, levantados y bajados solos
+make cover             # cobertura por paquete contra test/coverage-floors.txt
+
+make up-e2e                                # el stack, con los ajustes del E2E
+OS_ADMIN_PASSWORD='...' make test-e2e      # proxy → motor → log → dashboard
+
+make up-load           # el stack, con los ajustes de medición
+make test-load         # k6: latencia, disponibilidad y detección bajo carga
+
+make test-web          # el dashboard React
+```
+
+El corpus de ataques de `test/corpus/` lo comparten tres niveles —la cadena de
+reglas aislada, el stack vivo a través del proxy y el escenario de ataque de
+k6—, así que un vector añadido una vez queda cubierto en los tres y no puede
+dejar de estarlo sin que se note.
+
+La corrida de carga da el número que el §8.2 presupuesta por debajo de 50 ms:
+
+```
+                                p50          p95
+Backend directo               0,48 ms     1,04 ms
+A través del proxy            2,01 ms     7,60 ms
+----------------------------------------------------
+Sobrecarga añadida            1,52 ms     6,56 ms
+```
+
+k6 sale con código distinto de cero cuando se rompe un umbral, así que el
+requisito es un gate y no un párrafo.
+
+---
+
 ## Documentación
 
 - [Documento técnico](docs/documento-tecnico.md)
@@ -196,6 +239,8 @@ cd dashboard/web && npm install && npm run dev   # proxeado a localhost:8081
   por qué el código se aparta del documento técnico
 - [Manual de operación](docs/manual-operacion.md) — despliegue, ajuste y
   diagnóstico
+- [Estrategia de pruebas](docs/estrategia-de-pruebas.md) — qué defiende cada
+  nivel, cómo ejecutarlo y cómo bloquea un pull request
 
 ## Licencia
 
