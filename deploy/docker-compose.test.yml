@@ -1,0 +1,61 @@
+# Dependencies for the integration suite — nothing else.
+#
+#   docker compose -f deploy/docker-compose.test.yml up -d
+#   OS_TEST_POSTGRES_DSN=postgres://openshield:openshield@localhost:55432/openshield_test?sslmode=disable \
+#   OS_TEST_REDIS_ADDR=localhost:56379 \
+#       go test -tags=integration ./test/integration/...
+#
+# Or just: make test-integration
+#
+# Deliberately separate from the deployment stacks, and deliberately not
+# `include:`-ing them. Two reasons:
+#
+#   - Ports. These publish on high ports so a test run cannot collide with a
+#     demo stack somebody left running, and so nothing has to be torn down
+#     before tests can be run.
+#   - Data. There is no volume. The integration tests empty the audit log
+#     between cases, which is exactly the operation the append-only trigger
+#     exists to prevent; keeping that as far away from a real database as
+#     possible is the point. Every run starts from nothing.
+
+name: open-shield-test
+
+services:
+  test-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: openshield
+      POSTGRES_PASSWORD: openshield
+      POSTGRES_DB: openshield_test
+    ports:
+      - "${OS_TEST_POSTGRES_PORT:-55432}:5432"
+    # In-memory: a test database that survives a reboot is a test database that
+    # carries yesterday's state into today's run.
+    tmpfs:
+      - /var/lib/postgresql/data
+    command:
+      # None of the durability guarantees matter here, and turning them off
+      # takes a noticeable amount of time off a suite that writes a lot of rows.
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openshield -d openshield_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  test-redis:
+    image: redis:7-alpine
+    ports:
+      - "${OS_TEST_REDIS_PORT:-56379}:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

@@ -77,9 +77,6 @@ func (w *chainWalker) result() VerifyResult {
 	return VerifyResult{OK: true, Checked: w.position}
 }
 
-// head is the hash to continue the chain from after a successful walk.
-func (w *chainWalker) head() string { return w.prev }
-
 func short(hash string) string {
 	if len(hash) <= 12 {
 		return hash

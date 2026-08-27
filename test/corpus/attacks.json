@@ -1,0 +1,181 @@
+{
+  "_comment": [
+    "Attack corpus for RF-03, shared by three levels of the test suite:",
+    "",
+    "  - engine/internal/rules/corpus_test.go   the rule chain, in isolation",
+    "  - test/e2e/                              the live stack, through the proxy",
+    "  - test/load/k6/                          the 'attack' load scenario",
+    "",
+    "A vector added here is therefore covered in all three at once. See",
+    "docs/estrategia-de-pruebas.md for how to add one.",
+    "",
+    "Fields are written exactly as they travel on the wire: 'query' is",
+    "percent-encoded the way a client would send it, because that is what both",
+    "Nginx hands the engine and what an HTTP client will transmit unchanged.",
+    "Several vectors are therefore only detectable after the engine decodes the",
+    "field, which is deliberate — it exercises the decode pass of scanTargets.",
+    "",
+    "'signature' names the pattern that must fire. Signatures are evaluated in",
+    "file order per field, so each case here is written to reach its own",
+    "signature and no earlier one; a case that starts matching a different",
+    "signature is a real change in detection behaviour and should fail the test."
+  ],
+
+  "cases": [
+    {
+      "id": "sqli_union_select_query",
+      "description": "q=x' UNION SELECT clave FROM usuarios-- — the classic column-stealing injection",
+      "rule": "sqli",
+      "signature": "union_select",
+      "method": "GET",
+      "path": "/buscar",
+      "query": "q=x%27%20UNION%20SELECT%20clave%20FROM%20usuarios--"
+    },
+    {
+      "id": "sqli_quoted_tautology_encoded",
+      "description": "id=1' OR '1'='1, fully percent-encoded — invisible until the engine decodes it",
+      "rule": "sqli",
+      "signature": "quoted_tautology",
+      "method": "GET",
+      "path": "/productos",
+      "query": "id=1%27%20OR%20%271%27%3D%271"
+    },
+    {
+      "id": "sqli_bare_tautology",
+      "description": "id=1 OR 1=1 — tautology without quoting",
+      "rule": "sqli",
+      "signature": "bare_tautology",
+      "method": "GET",
+      "path": "/productos",
+      "query": "id=1%20OR%201%3D1"
+    },
+    {
+      "id": "sqli_stacked_query",
+      "description": "id=1; DROP TABLE usuarios — a second, destructive statement",
+      "rule": "sqli",
+      "signature": "stacked_query",
+      "method": "GET",
+      "path": "/productos",
+      "query": "id=1%3B%20DROP%20TABLE%20usuarios"
+    },
+    {
+      "id": "sqli_comment_terminator_body",
+      "description": "usuario=admin'--&clave=x in a POST body — the case auth_request could never see (§1 of decisiones-implementacion.md)",
+      "rule": "sqli",
+      "signature": "comment_terminator",
+      "method": "POST",
+      "path": "/login",
+      "headers": { "content-type": "application/x-www-form-urlencoded" },
+      "body": "usuario=admin'--&clave=x"
+    },
+    {
+      "id": "sqli_time_based_blind",
+      "description": "id=1 AND sleep(5) — time-delay probe for blind injection",
+      "rule": "sqli",
+      "signature": "time_based_blind",
+      "method": "GET",
+      "path": "/productos",
+      "query": "id=1%20AND%20sleep(5)"
+    },
+    {
+      "id": "sqli_schema_probe",
+      "description": "tabla=information_schema.tables — direct reference to the database catalogue",
+      "rule": "sqli",
+      "signature": "schema_probe",
+      "method": "GET",
+      "path": "/informes",
+      "query": "tabla=information_schema.tables"
+    },
+    {
+      "id": "sqli_file_access",
+      "description": "f=load_file('/etc/passwd') — SQL function reaching the host filesystem",
+      "rule": "sqli",
+      "signature": "file_access",
+      "method": "GET",
+      "path": "/descargas",
+      "query": "f=load_file(%27/etc/passwd%27)"
+    },
+    {
+      "id": "xss_script_tag_query",
+      "description": "q=<script>alert(1)</script> in the query string",
+      "rule": "xss",
+      "signature": "script_tag",
+      "method": "GET",
+      "path": "/buscar",
+      "query": "q=%3Cscript%3Ealert(1)%3C/script%3E"
+    },
+    {
+      "id": "xss_script_tag_body",
+      "description": "A stored-XSS comment — the payload lives in the POST body",
+      "rule": "xss",
+      "signature": "script_tag",
+      "method": "POST",
+      "path": "/comentarios",
+      "headers": { "content-type": "application/x-www-form-urlencoded" },
+      "body": "texto=<script>fetch(\"//evil\")</script>"
+    },
+    {
+      "id": "xss_script_close",
+      "description": "q=</script><img src=x> — breaking out of an inline script block",
+      "rule": "xss",
+      "signature": "script_close",
+      "method": "GET",
+      "path": "/buscar",
+      "query": "q=%3C/script%3E%3Cimg%20src%3Dx%3E"
+    },
+    {
+      "id": "xss_javascript_uri",
+      "description": "url=javascript:alert(1) — script URI in an attribute. Kept free of any other payload on purpose: an unencoded 'document.cookie' here would match cookie_theft against the raw field before the decode pass reaches this signature.",
+      "rule": "xss",
+      "signature": "javascript_uri",
+      "method": "GET",
+      "path": "/redirigir",
+      "query": "url=javascript%3Aalert(1)"
+    },
+    {
+      "id": "xss_event_handler",
+      "description": "q=<img src=x onerror=alert(1)> — inline event handler, no <script> anywhere",
+      "rule": "xss",
+      "signature": "event_handler",
+      "method": "GET",
+      "path": "/buscar",
+      "query": "q=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E"
+    },
+    {
+      "id": "xss_dangerous_tag",
+      "description": "q=<iframe src=//evil> — a tag that executes or redirects on its own",
+      "rule": "xss",
+      "signature": "dangerous_tag",
+      "method": "GET",
+      "path": "/buscar",
+      "query": "q=%3Ciframe%20src%3D//evil%3E"
+    },
+    {
+      "id": "xss_cookie_theft",
+      "description": "q=document.cookie — the DOM access of a session-stealing payload",
+      "rule": "xss",
+      "signature": "cookie_theft",
+      "method": "GET",
+      "path": "/buscar",
+      "query": "q=document.cookie"
+    },
+    {
+      "id": "xss_data_uri_html",
+      "description": "url=data:text/html,... — HTML smuggled through a data: URI",
+      "rule": "xss",
+      "signature": "data_uri_html",
+      "method": "GET",
+      "path": "/redirigir",
+      "query": "url=data%3Atext/html%2C%3Ch1%3Ex%3C/h1%3E"
+    },
+    {
+      "id": "xss_in_referer_header",
+      "description": "Payload in the Referer header — proves headers are scanned, not just path, query and body",
+      "rule": "xss",
+      "signature": "script_tag",
+      "method": "GET",
+      "path": "/",
+      "headers": { "referer": "http://ejemplo.test/?q=<script>alert(1)</script>" }
+    }
+  ]
+}

@@ -23,11 +23,11 @@ func TestIPBlockDeniesAndAllows(t *testing.T) {
 		ip   string
 		want model.Verdict
 	}{
-		"inside the denied range":         {"203.0.113.44", model.Block},
-		"allow entry wins over deny":      {"203.0.113.7", model.Allow},
-		"outside every range":             {"198.51.100.1", model.Allow},
-		"denied ipv6 range":               {"2001:db8::1", model.Block},
-		"ipv6 outside the range":          {"2001:db9::1", model.Allow},
+		"inside the denied range":          {"203.0.113.44", model.Block},
+		"allow entry wins over deny":       {"203.0.113.7", model.Allow},
+		"outside every range":              {"198.51.100.1", model.Allow},
+		"denied ipv6 range":                {"2001:db8::1", model.Block},
+		"ipv6 outside the range":           {"2001:db9::1", model.Allow},
 		"unparseable address is not fatal": {"not-an-ip", model.Allow},
 	}
 

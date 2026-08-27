@@ -224,15 +224,22 @@ por objetivo, desde dentro de la red del stack:
 Frente al presupuesto de **< 50 ms** del §8.2, queda un margen de más de un
 orden de magnitud.
 
-Para repetir la medición:
+Los números de la tabla son de una medición manual con `curl`, conservada como
+referencia histórica. Para repetirla de forma reproducible:
 
 ```bash
-docker run --rm --network open-shield_openshield \
-  --entrypoint /bin/sh open-shield-demo-backend:dev -c '
-    for i in $(seq 1 100); do
-      curl -s -o /dev/null -w "%{time_total}\n" http://proxy/
-    done | sort -n | sed -n "50p"'
+make up-load     # el stack con el rate limiting desactivado para medir
+make test-load   # k6, cuatro escenarios, ~1 minuto
 ```
+
+La corrida imprime la misma comparación y falla con código ≠ 0 si la sobrecarga
+sale del presupuesto del §8.2. `make test-load-full` hace la versión de nueve
+minutos.
+
+El rate limiting se desactiva durante la medición a propósito: el motor
+identifica al cliente por la dirección de origen, todos los usuarios virtuales
+salen de una sola, y con el límite por defecto la corrida se estrangularía a sí
+misma y mediría el limitador. Ver `docs/estrategia-de-pruebas.md` §4.5.
 
 ### 5.2 De dónde sale la sobrecarga
 

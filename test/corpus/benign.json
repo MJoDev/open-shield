@@ -1,0 +1,125 @@
+{
+  "_comment": [
+    "Legitimate traffic that a signature set is tempting to block by accident.",
+    "Every case here must be allowed by the whole rule chain.",
+    "",
+    "A false positive is not a lesser bug than a miss. A filter that blocks",
+    "O'Brien from signing in, or an article about the European Union, gets",
+    "switched off by the operator — and then it catches nothing at all. Several",
+    "of these are deliberately adversarial: they contain the exact keywords the",
+    "signatures look for, in contexts where they are harmless.",
+    "",
+    "Same wire-form convention as attacks.json: 'query' is percent-encoded."
+  ],
+
+  "cases": [
+    {
+      "id": "plain_root",
+      "description": "The home page, nothing attached",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "id": "catalogue_pagination",
+      "description": "Ordinary pagination and sort parameters",
+      "method": "GET",
+      "path": "/catalogo",
+      "query": "page=2&orden=nombre"
+    },
+    {
+      "id": "accented_search",
+      "description": "A Spanish search term with accents and spaces",
+      "method": "GET",
+      "path": "/buscar",
+      "query": "q=zapatos%20de%20cuero%20marr%C3%B3n"
+    },
+    {
+      "id": "article_about_the_union",
+      "description": "The word 'union' in an article slug — 'union' alone is not an injection",
+      "method": "GET",
+      "path": "/articulos/como-funciona-la-union-europea"
+    },
+    {
+      "id": "sql_keywords_in_prose",
+      "description": "A tutorial search: SELECT and UNION both present, but in the wrong order for union_select",
+      "method": "GET",
+      "path": "/buscar",
+      "query": "q=diferencia%20entre%20SELECT%20y%20UNION%20en%20SQL"
+    },
+    {
+      "id": "javascript_in_a_slug",
+      "description": "'javascript' without a colon is a topic, not a URI scheme",
+      "method": "GET",
+      "path": "/blog/2024/03/javascript-para-principiantes"
+    },
+    {
+      "id": "apostrophe_in_a_surname",
+      "description": "O'Brien — the canonical WAF false positive",
+      "method": "GET",
+      "path": "/perfil",
+      "query": "nombre=O%27Brien"
+    },
+    {
+      "id": "comparison_operators_in_a_filter",
+      "description": "A price filter using <, > and the word 'and'",
+      "method": "GET",
+      "path": "/buscar",
+      "query": "q=precio%20%3C%20100%20and%20stock%20%3E%200"
+    },
+    {
+      "id": "double_dash_in_free_text",
+      "description": "A double dash with no quote in front of it is a dash, not a SQL comment",
+      "method": "GET",
+      "path": "/notas",
+      "query": "texto=Reuni%C3%B3n%203--4%20de%20la%20tarde"
+    },
+    {
+      "id": "ordinary_login",
+      "description": "A real sign-in POST, password included",
+      "method": "POST",
+      "path": "/login",
+      "headers": { "content-type": "application/x-www-form-urlencoded" },
+      "body": "usuario=maria&clave=Contrase%C3%B1a123"
+    },
+    {
+      "id": "ordinary_comment",
+      "description": "A product review, the same endpoint the stored-XSS vector uses",
+      "method": "POST",
+      "path": "/comentarios",
+      "headers": { "content-type": "application/x-www-form-urlencoded" },
+      "body": "texto=Me%20encanta%20este%20producto%2C%20cinco%20estrellas"
+    },
+    {
+      "id": "browser_user_agent",
+      "description": "A real User-Agent, semicolons and all — headers are scanned too",
+      "method": "GET",
+      "path": "/",
+      "headers": {
+        "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36",
+        "accept-language": "es-ES,es;q=0.9,en;q=0.8"
+      }
+    },
+    {
+      "id": "plain_text_data_uri",
+      "description": "A data: URI that is not text/html",
+      "method": "GET",
+      "path": "/api/documentos",
+      "query": "formato=data%3Atext/plain"
+    },
+    {
+      "id": "question_in_the_faq",
+      "description": "An accented question mark and a question word",
+      "method": "GET",
+      "path": "/faq",
+      "query": "q=%C2%BFC%C3%B3mo%20elimino%20mi%20cuenta%3F"
+    },
+    {
+      "id": "email_in_a_form",
+      "description": "An address in a POST body — the @ and the dots must not trip anything",
+      "method": "POST",
+      "path": "/suscripcion",
+      "headers": { "content-type": "application/x-www-form-urlencoded" },
+      "body": "correo=juan.perez%40ejemplo.com&acepta=1"
+    }
+  ]
+}

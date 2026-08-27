@@ -8,10 +8,11 @@
 # the chain is broken it stays broken — that is the whole point. Run it against
 # a demo stack, then recreate the database volume:
 #
-#   docker compose -f deploy/docker-compose.quickstart.yml down -v
+#   make clean
 set -uo pipefail
 
-COMPOSE_FILE="${COMPOSE_FILE:-deploy/docker-compose.quickstart.yml}"
+# The demo stack is the base file plus an override, layered with -f.
+COMPOSE_FILES="${COMPOSE_FILES:--f deploy/docker-compose.yml -f deploy/docker-compose.quickstart.yml}"
 DASHBOARD="${DASHBOARD:-http://localhost:${OS_DASHBOARD_PORT:-8081}}"
 ADMIN_USER="${OS_ADMIN_USER:-admin}"
 ADMIN_PASSWORD="${OS_ADMIN_PASSWORD:-}"
@@ -26,7 +27,9 @@ fi
 COOKIES="$(mktemp)"
 trap 'rm -f "$COOKIES"' EXIT
 
-psql() { docker compose -f "$COMPOSE_FILE" exec -T db psql -U "$PG_USER" -d "$PG_DB" "$@"; }
+# Unquoted on purpose: COMPOSE_FILES is a list of flags, not one word.
+# shellcheck disable=SC2086
+psql() { docker compose $COMPOSE_FILES exec -T db psql -U "$PG_USER" -d "$PG_DB" "$@"; }
 
 rule() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
@@ -60,5 +63,5 @@ echo
 echo
 
 echo "El log ya no verifica. Para volver a un estado limpio:"
-echo "  docker compose -f $COMPOSE_FILE down -v"
+echo "  docker compose $COMPOSE_FILES down -v"
 echo

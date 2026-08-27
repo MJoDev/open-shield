@@ -71,7 +71,7 @@ func (m *Memory) VerifyChain(_ context.Context, from, to time.Time) (VerifyResul
 }
 
 func (m *Memory) List(_ context.Context, f Filter) ([]model.AuditEntry, error) {
-	f = f.normalized()
+	f = f.Normalized()
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()

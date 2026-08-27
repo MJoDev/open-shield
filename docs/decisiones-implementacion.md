@@ -217,6 +217,113 @@ imports y una línea en `go.mod`.
 
 ---
 
+## 8. El árbol `test/` no aparece en el §7
+
+El §7 del documento técnico dibuja la estructura del repositorio y no contempla
+un directorio de pruebas: los tests unitarios de Go viven junto al código, y con
+eso bastaba mientras solo hubiera tests unitarios.
+
+La batería completa necesita cosas que no son ficheros `_test.go` junto a un
+paquete:
+
+```
+test/
+├── corpus/        vectores de ataque y tráfico legítimo, en JSON
+├── harness/       fixtures compartidas de la batería de integración
+├── integration/   //go:build integration
+├── e2e/           //go:build e2e
+└── load/k6/       los scripts de carga, que no son Go
+```
+
+`test/corpus` es un paquete Go de verdad, no una carpeta de datos, porque el
+corpus lo consumen tres niveles distintos y los ficheros van embebidos con
+`//go:embed`. Los scripts de k6 leen los mismos JSON directamente.
+
+Ver `docs/estrategia-de-pruebas.md` para qué defiende cada nivel.
+
+### 8.1 Etiquetas de compilación, no `testing.Short()`
+
+Integración y end-to-end van tras `//go:build integration` y `//go:build e2e`.
+
+`testing.Short()` habría sido menos maquinaria, pero deja los ficheros dentro de
+la compilación: sus imports —el pool de PostgreSQL, el cliente de Redis, el
+servidor HTTP— entran en el grafo de dependencias de `go test ./...` aunque el
+test se salte. Con etiquetas, `make test` es genuinamente sin dependencias, y
+quien ejecute el target por defecto no tiene que saber por qué pasó.
+
+### 8.2 La regla `internal` reparte la batería en tres sitios
+
+Esta es la consecuencia práctica de la desviación del §3, y sorprende la primera
+vez.
+
+Go solo permite importar `engine/internal/…` desde `engine/…`, y
+`dashboard/api/internal/…` desde `dashboard/api/…`. Un test de integración para
+el rate limiter o para el router del dashboard **no puede vivir en
+`test/integration/`**: tiene que estar junto al paquete que ejercita, tras la
+misma etiqueta.
+
+Queda así:
+
+| Dónde | Qué cubre |
+|---|---|
+| `test/integration/` | todo lo alcanzable desde el `internal/` de la raíz: `audit`, `rulestore`, `migrate`, `events` |
+| `engine/internal/ratelimit/integration_test.go` | la ventana deslizante contra Redis real |
+| `dashboard/api/internal/httpapi/integration_test.go` | `/rules` e `/ipblock` contra PostgreSQL real |
+
+`test/harness/` es la parte que los tres comparten. No está bajo `internal/`
+precisamente para que los tres puedan importarla.
+
+Los tres comparten además **una sola base de datos**, así que la batería se
+ejecuta con `-p 1`: sin eso los binarios de test corren en paralelo y se vacían
+las tablas unos a otros a mitad de ejecución.
+
+---
+
+## 9. El Lua se prueba de extremo a extremo, no en aislamiento
+
+`proxy/lua/openshield.lua` es el único componente sin tests propios.
+
+Montar un arnés de Lua —busted, o `resty -e`— dentro de la imagen de OpenResty
+es posible, pero el fichero son 194 líneas que no contienen lógica de filtrado:
+recogen lo que el motor necesita, preguntan y actúan sobre la respuesta. Toda la
+decisión está en Go, donde ya se prueba exhaustivamente.
+
+Lo que sí puede fallar en el Lua es que deje de rellenar un campo, y eso se
+detecta desde fuera: `TestTheProxyPopulatesTheFieldsTheEngineDependsOn` exige
+que `ip`, `method`, `path` y `host` lleguen poblados a la entrada de auditoría.
+Un hook que dejara de enviarlos volvería ciega a la regla que los lee, y el test
+lo dice.
+
+---
+
+## 10. Magnitudes numéricas fuera del rango de la cadena
+
+Un límite conocido, documentado en lugar de arreglado.
+
+`encoding/json` escribe un `float64` en notación exponencial en cuanto su
+exponente alcanza 21 o baja de −6. `1e21` se serializa como `"1e+21"`;
+PostgreSQL guarda el número como `numeric` y lo devuelve como
+`"1000000000000000000000"`. Los dos textos canonicalizan distinto, así que el
+hash recalculado al leer no coincide con el que se selló, y `VerifyChain`
+reporta manipulación sobre un log que nadie ha tocado.
+
+No es alcanzable hoy: `decision_ms` son milisegundos de un dígito y `status`
+tiene tres. La trampa es para quien añada el siguiente campo numérico.
+
+**Por qué no se arregla.** Cualquier arreglo cambia lo que entra en el hash —
+normalizar el literal numérico a la forma que emite `jsonb`, por ejemplo — y eso
+invalida **toda cadena ya existente**. El log no se puede podar ni recalcular:
+borrar filas lo rompe exactamente igual que lo haría un atacante. Cambiar la
+función de hash es una migración con exportación completa y reinicio del
+volumen, no un parche.
+
+Queda fijado por `TestExtremeMagnitudesAreOutsideTheChainsRange`
+(`test/integration/audit_test.go`), que falla si el comportamiento cambia en
+cualquier dirección. Si algún día se arregla, ese test avisará de que hay que
+actualizar esta sección.
+
+---
+
 ## Fuera de alcance en esta versión
 
 Con su punto de anclaje ya preparado:

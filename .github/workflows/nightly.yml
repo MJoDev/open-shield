@@ -1,0 +1,197 @@
+# The work that is too slow to put in front of a pull request.
+#
+# Nothing here is less important than the gate in ci.yml — the soak run is how a
+# leak in the audit queue gets found, and the fuzzers are what actually attack
+# the hash chain. It is only that a ten-minute load run and five minutes per
+# fuzz target would turn every review into a half-hour wait, and a gate people
+# wait half an hour for is a gate people learn to bypass.
+#
+# Runs on a schedule and on demand. A failure here is a real finding: open an
+# issue rather than re-running it.
+
+name: Nightly
+
+on:
+  schedule:
+    # 03:00 UTC — outside working hours in the Americas and Europe both.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Perfil de carga"
+        type: choice
+        options: [full, soak, smoke]
+        default: full
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  fuzz:
+    name: Fuzzing del núcleo forense
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # The gate runs these against their seed corpora only, which takes
+      # milliseconds and proves the properties hold for inputs somebody thought
+      # of. This is the part that generates inputs nobody thought of.
+      #
+      # Each target gets its own run: `go test -fuzz` only fuzzes one at a time.
+      - name: go test -fuzz
+        run: |
+          set -uo pipefail
+          failed=0
+          for target in \
+            FuzzCanonicalJSONIsDeterministic \
+            FuzzCanonicalJSONSurvivesItsOwnOutput \
+            FuzzEntryHashSurvivesAStoreRoundTrip \
+            FuzzHashFieldsCannotBeRepartitioned
+          do
+            echo "::group::$target"
+            go test ./internal/model/ -run "^${target}$" -fuzz "^${target}$" -fuzztime=5m || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed
+
+      # A failing input is written to testdata/fuzz/. It is the whole value of
+      # the run: it reproduces the failure in one line, and belongs in the
+      # repository as a permanent regression case.
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: fuzz-corpus
+          path: internal/model/testdata/fuzz/
+          retention-days: 30
+
+  chain-at-scale:
+    name: Verificación de la cadena a escala
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: openshield
+          POSTGRES_PASSWORD: openshield
+          POSTGRES_DB: openshield_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U openshield -d openshield_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    env:
+      OS_TEST_POSTGRES_DSN: postgres://openshield:openshield@localhost:5432/openshield_test?sslmode=disable
+      OS_TEST_REDIS_ADDR: localhost:6379
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # The audit log cannot be pruned — deleting rows breaks the chain exactly
+      # as an attacker would — so it only ever grows, and verification walks all
+      # of it. How long that takes at a realistic size is an operational fact an
+      # operator needs before an incident, not during one.
+      - name: Verificación sobre un log grande
+        env:
+          OS_TEST_SCALE: "200000"
+        run: |
+          go test -tags=integration -p 1 -count=1 -timeout 20m -v \
+            -run TestChainVerificationAtScale ./test/integration/...
+
+      - name: Integración con el detector de carreras
+        run: go test -tags=integration -race -p 1 -count=1 ./...
+
+  load:
+    name: Carga sostenida
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OS_LOAD_PROFILE: ${{ inputs.profile || 'full' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Generar deploy/.env
+        run: |
+          set -euo pipefail
+
+          password="$(openssl rand -hex 16)"
+          echo "OS_ADMIN_PASSWORD=$password" >> "$GITHUB_ENV"
+
+          hash_line="$(go run ./dashboard/api/cmd/api -hash-password "$password" \
+            | grep '^OS_ADMIN_PASSWORD_HASH=')"
+
+          grep -v -e '^POSTGRES_PASSWORD=' \
+                  -e '^OS_SESSION_SECRET=' \
+                  -e '^OS_ADMIN_PASSWORD_HASH=' deploy/.env.example > deploy/.env
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "OS_SESSION_SECRET=$(openssl rand -hex 32)"
+            echo "$hash_line"
+          } >> deploy/.env
+
+          grep -q 'OS_ADMIN_PASSWORD_HASH=\$\$2' deploy/.env
+
+      - name: Levantar el stack
+        run: make up-load
+
+      - name: Carga
+        run: ./scripts/load.sh "${{ env.OS_LOAD_PROFILE }}"
+
+      # The soak profile is the one that finds what a nine-minute run cannot:
+      # the audit queue drifting upward, memory that never comes back. It is
+      # only run on the nightly schedule, not on a manual dispatch that asked
+      # for something else.
+      - name: Resistencia
+        if: env.OS_LOAD_PROFILE == 'full' && github.event_name == 'schedule'
+        run: ./scripts/load.sh soak
+
+      - name: Estado final de la cola de auditoría
+        if: always()
+        run: |
+          docker compose -f deploy/docker-compose.quickstart.yml \
+                         -f deploy/docker-compose.load.yml ps
+          docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}'
+
+      - name: Logs de los contenedores
+        if: failure()
+        run: |
+          docker compose -f deploy/docker-compose.quickstart.yml \
+                         -f deploy/docker-compose.load.yml logs --no-color --tail 500
+
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: load-summary-${{ env.OS_LOAD_PROFILE }}
+          path: load-summary.json
+          retention-days: 30
+          if-no-files-found: ignore

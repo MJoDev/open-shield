@@ -1,0 +1,55 @@
+# Minimum statement coverage per package, enforced by scripts/coverage.sh.
+#
+#   <import path relative to the module>   <minimum percentage>
+#
+# The floors are measured, not aspirational: each one sits a few points below
+# what the suite actually achieves, so ordinary refactoring does not trip the
+# gate but deleting a test does. A floor that is red the day it is written gets
+# turned off within a week, and then it protects nothing.
+#
+# They are also deliberately uneven. The packages that carry the forensic claim
+# and the request path are held high, because a gap there is a gap in what the
+# project says it does. Packages of glue are held lower: chasing their last
+# statements buys nothing worth the tests it would take.
+#
+# Not listed, on purpose:
+#   - engine/cmd/engine, dashboard/api/cmd/api — process wiring. Covered by the
+#     end-to-end suite, which starts the real binaries; a unit test here would
+#     only assert that main() calls what main() calls.
+#   - examples/demo-backend — a sample application, not part of the product.
+#   - migrations, dashboard/api/web — embedded assets and an fs.FS.
+#   - test/corpus, test/harness — the test suite's own scaffolding.
+#
+# Coverage is measured with the integration tag and both dependencies running,
+# which is what the CI integration job does. Measuring without them would put
+# internal/audit at about half this number: its SQL store is most of the file.
+#
+# To raise a floor, run `make cover`, take the measured value, subtract a few
+# points. To lower one, say why in the commit message.
+
+# --- The forensic core -------------------------------------------------------
+# The hash chain is the project's central contribution. A statement in here that
+# no test reaches is a statement nobody has checked the chain still holds under.
+internal/model                        90
+internal/audit                        80
+
+# --- The request path --------------------------------------------------------
+# Everything a live request touches. The engine's HTTP surface is the contract
+# with the Lua hook, and nothing else sits between the internet and a verdict.
+engine/internal/httpapi               90
+engine/internal/rules                 75
+engine/internal/ratelimit             68
+
+# --- The dashboard -----------------------------------------------------------
+# The session gate and everything behind it. auth is held higher than the rest:
+# it is the only thing standing between the internet and the block reasons an
+# attacker would use to tune the next payload.
+dashboard/api/internal/auth           88
+dashboard/api/internal/httpapi        78
+dashboard/api/internal/ws             80
+
+# --- Configuration and storage -----------------------------------------------
+internal/config                       90
+internal/events                       80
+internal/rulestore                    75
+internal/migrate                      65

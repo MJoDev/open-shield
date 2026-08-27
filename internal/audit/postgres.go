@@ -148,7 +148,7 @@ func (p *Postgres) anchorBefore(ctx context.Context, from time.Time) (string, er
 }
 
 func (p *Postgres) List(ctx context.Context, f Filter) ([]model.AuditEntry, error) {
-	f = f.normalized()
+	f = f.Normalized()
 	where, args := filterClause(f)
 
 	args = append(args, f.Limit, f.Offset)
