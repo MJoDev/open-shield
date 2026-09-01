@@ -49,7 +49,8 @@ No existe la red $NETWORK.
 
 Levanta el stack con los ajustes de carga:
 
-  docker compose -f deploy/docker-compose.quickstart.yml \\
+  docker compose -f deploy/docker-compose.yml \\
+                 -f deploy/docker-compose.quickstart.yml \\
                  -f deploy/docker-compose.load.yml up -d --build
 
 Si tu proyecto de compose tiene otro nombre, define STACK_NETWORK.
