@@ -66,10 +66,27 @@ func RedisAddr(t *testing.T) string {
 
 // Context returns a context bounded by a generous per-test timeout, so a test
 // that hangs on a dependency fails with a message instead of stalling the run.
+//
+// Generous is relative to a test that touches a handful of rows, which is what
+// the suite is made of. A test whose work is measured in minutes must not use
+// this budget — see ContextWithTimeout.
 func Context(t *testing.T) context.Context {
 	t.Helper()
+	return ContextWithTimeout(t, 90*time.Second)
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+// ContextWithTimeout is Context with the bound stated by the caller, for the
+// few tests whose work is not on the scale of the rest of the suite.
+//
+// It exists because sharing one budget across both hid a failure for weeks:
+// the 200k-entry chain verification finished in 83.84s against Context's 90s,
+// and passed on a six-second margin until a slower runner took it. A timeout
+// that only holds while the machine cooperates is not a timeout, it is a race
+// the suite happens to keep winning. Size the bound to the work.
+func ContextWithTimeout(t *testing.T, d time.Duration) context.Context {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), d)
 	t.Cleanup(cancel)
 	return ctx
 }

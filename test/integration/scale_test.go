@@ -38,7 +38,19 @@ func TestChainVerificationAtScale(t *testing.T) {
 	}
 
 	store := harness.Store(t)
-	ctx := harness.Context(t)
+
+	// Not harness.Context: its 90s is sized for a test that touches a handful
+	// of rows, and this one seeds 200k. It fit — 83.84s — until a slower runner
+	// took the six seconds of margin away, and the failure surfaced as a
+	// misleading "writer.Close: context deadline exceeded" fourteen minutes in.
+	//
+	// A healthy runner seeds and verifies at roughly 2,400 entries/s end to
+	// end. Budgeting for an order of magnitude below that leaves the bound
+	// loose enough that only a real stall trips it, and still inside the go
+	// test -timeout the nightly passes.
+	const minThroughput = 300 // entries per second
+	ctx := harness.ContextWithTimeout(t,
+		2*time.Minute+time.Duration(total)*time.Second/minThroughput)
 
 	writer, err := audit.NewWriter(ctx, store, audit.WriterOptions{Buffer: 8192})
 	if err != nil {
@@ -66,8 +78,20 @@ func TestChainVerificationAtScale(t *testing.T) {
 
 		// The queue drains at whatever rate PostgreSQL accepts inserts. Letting
 		// the producer run unchecked would just fill it and start dropping.
+		//
+		// The context is checked on the way through: once it is gone the writer
+		// is no longer draining, and seeding the remaining entries only delays
+		// the same failure — and reports it against whatever call comes next
+		// rather than against the stall that caused it.
 		if i%2048 == 0 {
+			if err := ctx.Err(); err != nil {
+				t.Fatalf("seeding stopped at entry %d of %d: %v", i, total, err)
+			}
 			for writer.Stats().Queued > 4096 {
+				if err := ctx.Err(); err != nil {
+					t.Fatalf("seeding stalled at entry %d of %d with %d still queued: %v",
+						i, total, writer.Stats().Queued, err)
+				}
 				time.Sleep(10 * time.Millisecond)
 			}
 		}
