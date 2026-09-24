@@ -2,10 +2,17 @@
 title: "Reverse Proxy System — Technical Decisions Document"
 project: "open-shield"
 date: "2026-08-25"
+version: "1.2 (draft)"
+revision: "2026-09-24"
 license: "Open source"
 language: "en"
-translated_from: "documento-tecnico.md"
+translation_es: "technical-document.es.md"
 ---
+
+> **Status of this revision.** v1.2 incorporates the results of the evasion
+> resistance evaluation recorded in `filtering-coverage-findings.md`. Items
+> marked **(proposed)** are pending approval and are the only ones that change
+> what was agreed in v1.1.
 
 # Reverse Proxy System
 
@@ -58,10 +65,30 @@ The scope is not limited to the proxy itself — it also includes the rules/deci
 
 2. Design the architecture of the reverse proxy, the rules engine, the monitoring dashboard, and the forensic traceability scheme, "packaged as a container stack installable on any VPS"
 
-3. Validate the system through load testing and controlled attack simulations
+3. Validate the system through load testing and controlled attack simulations, including the obfuscated variants of every vector, and report effectiveness as a detection rate alongside a false-positive rate
 
 **Out of Scope (v1):**
 A centralized control-plane-style panel that manages multiple VPS instances. The initial version assumes one installation per server.
+
+**Adversary model.**
+Stating *who* the system protects against is what makes the claim that it protects evaluable. The adversary considered:
+
+* operates from the internet, with no access to the server or the database;
+* knows the common attack classes (SQL injection, XSS, path traversal, command injection) and knows a filter sits in front, and therefore applies known obfuscation techniques — repeated percent-encoding, JSON `\uXXXX` escapes, HTML entities, interleaved comments — to get past it;
+* holds neither the signatures in use nor an unpublished vulnerability in the underlying technologies.
+
+**Outside** the model: an attacker with access to the host or to PostgreSQL; a volumetric network-level denial of service, which is absorbed upstream rather than at the origin; abuse by an already authenticated legitimate user; and compromise of the protected application by a route that does not pass through the proxy.
+
+**Inspection envelope.**
+What the system looks at, and what it explicitly does not:
+
+| Inspected | Not inspected |
+|---|---|
+| Path, query string and headers, except those excluded by explicit decision | Backend responses |
+| The request body up to `OS_MAX_BODY_INSPECT_BYTES` | A body above `client_body_buffer_size`, which Nginx spills to disk: it arrives marked truncated and is **not re-read on the request path** |
+| Every field both raw and normalized (see RF-03) | Traffic that does not pass through the proxy |
+
+TLS termination may be resolved at the deployment provider's edge; in that topology the proxy receives the connection already decrypted and RF-04 is satisfied outside the container.
 
 ---
 
@@ -348,20 +375,30 @@ function useLiveEvents() {
 |---|---|
 | RF-01 | Intercept every incoming connection before it reaches the origin server |
 | RF-02 | Route to different internal backends based on configuration |
-| RF-03 | Filter requests based on defined patterns (SQLi, XSS, known payloads) |
-| RF-04 | Support TLS/SSL certificate termination and automatic renewal |
-| RF-05 | Limit requests per IP within a time window (rate limiting) |
+| RF-03 | Filter requests against defined patterns, over the **normalized** input. Classes covered, a closed list for this version: SQL injection, XSS, path traversal/LFI and command injection |
+| RF-03.1 | Normalize every field before matching: percent-decoding to a fixed point (bounded), JSON `\uXXXX` escapes, HTML entities, and removal of null bytes and control characters. Matching against the raw form is retained as well, because normalizing can also destroy a match |
+| RF-04 | Support TLS/SSL certificate termination and automatic renewal, or delegate it to the provider's edge where the deployment resolves it there |
+| RF-05 | Limit requests per IP within a time window (rate limiting), with an additional per-resource budget for endpoints exposed to brute force. The per-IP budget still applies **above** the specific one: spreading load across routes must not multiply the total budget |
 | RF-06 | Log every connection with IP, outcome, and reason, with verifiable integrity |
 | RF-07 | Notify technical staff of anomalous traffic patterns |
 | RF-08 | Support load balancing across instances of the same service |
 | RF-09 | Expose a real-time dashboard with the state of filtered traffic |
 | RF-10 | Allow full installation via a single command (Docker Compose) |
+| RF-11 | **(proposed)** Automatically and temporarily block an address that accumulates a configurable number of block decisions within a window |
+
+**On RF-11.** It is the only addition in v1.2 that widens the scope rather than sharpening what was already agreed, which is why it is stated separately instead of being derived from RF-05. Up to here the system decides request by request and the response on addresses is manual; an automatic detection-to-response loop introduces state that changes policy **without human intervention**, and with it two risks that did not exist before:
+
+* **Self-inflicted denial of service.** A false positive stops costing one rejected request and starts evicting a legitimate address for the whole lifetime of the block. The trigger threshold has to be set from the measured false-positive rate, not from intuition, and the block has to expire on its own.
+* **Induced blocking of third parties.** If the header the real address is taken from were forgeable by the client, an attacker could get other people's addresses blocked. The feature requires, as a precondition, that the address come from a header a trusted edge overwrites and a client cannot extend.
+
+RF-11 delimitation: it acts on IP addresses, not on sessions or accounts; the block is always temporary; and it covers neither shared reputation nor external intelligence feeds.
 
 #### 8.2 Non-Functional
 
 | Category | Criterion |
 |---|---|
 | Security | Encryption in transit, least privilege, periodic rule updates |
+| Evasion resistance | Effectiveness is measured over a corpus that includes, for every vector, its obfuscated variants per the adversary model in §2. Both a detection rate and a false-positive rate are reported; a detection figure without the false-positive figure is not a measurement |
 | Availability | 24/7 operation, fault tolerance, target ≥99% |
 | Performance | Additional proxy latency < 50 ms under normal load |
 | Scalability | New backends can be added without interrupting service |

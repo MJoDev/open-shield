@@ -2,8 +2,17 @@
 titulo: "Sistema de Proxy Inverso — Documento Técnico de Decisiones"
 proyecto: "open-shield"
 fecha: "2026-08-25"
+version: "1.2 (borrador)"
+revision: "2026-09-24"
 licencia: "Open source"
+idioma: "es"
+version_en: "technical-document.md"
 ---
+
+> **Estado de esta revisión.** La v1.2 incorpora los resultados de la evaluación
+> de resistencia a evasión registrada en `filtering-coverage-findings.es.md`. Los
+> puntos marcados **(propuesta)** están pendientes de aprobación y son los
+> únicos que alteran lo acordado en la v1.1.
 
 # Sistema de Proxy Inverso
 
@@ -56,10 +65,30 @@ El alcance no se limita al proxy en sí, sino que incluye el motor de reglas y d
 
 2. Diseñar la arquitectura del proxy inverso, motor de reglas, dashboard de monitoreo y esquema de trazabilidad forense "empaquetada como un stack de contenedores instalable en cualquier VPS"
 
-3. Validar el sistema mediante pruebas de carga y simulacros de ataque controlados
+3. Validar el sistema mediante pruebas de carga y simulacros de ataque controlados, incluyendo para cada vector sus variantes ofuscadas, y reportar la eficacia como tasa de detección junto a la tasa de falsos positivos
 
 **Fuera de Alcance (v1):**
 Panel centralizado tipo control-plane que administre múltiples VPS. La versión inicial asume una instalación por servidor.
+
+**Modelo de adversario.**
+Delimitar contra *quién* protege el sistema es lo que hace evaluable la afirmación de que protege. Se contempla un atacante que:
+
+* opera desde internet, sin acceso al servidor ni a la base de datos;
+* conoce las clases de ataque de uso corriente (inyección SQL, XSS, recorrido de rutas, inyección de comandos) y sabe que hay un filtro delante, por lo que aplica técnicas de ofuscación conocidas —codificación porcentual múltiple, escapes `\uXXXX` de JSON, entidades HTML, comentarios intercalados— para atravesarlo;
+* no dispone de las firmas concretas en uso ni de una vulnerabilidad no publicada en las tecnologías de base.
+
+Quedan **fuera** del modelo: el atacante con acceso al host o a PostgreSQL, el ataque volumétrico de denegación de servicio a nivel de red —que se absorbe aguas arriba, no en el origen—, el abuso por parte de un usuario legítimo ya autenticado, y el compromiso de la aplicación protegida por una vía que no atraviesa el proxy.
+
+**Sobre de inspección.**
+Lo que el sistema mira, y lo que explícitamente no:
+
+| Se inspecciona | No se inspecciona |
+|---|---|
+| Ruta, cadena de consulta y cabeceras, salvo las excluidas por decisión explícita | Las respuestas del backend |
+| El cuerpo de la petición hasta `OS_MAX_BODY_INSPECT_BYTES` | El cuerpo por encima de `client_body_buffer_size`, que Nginx vuelca a disco: llega marcado como truncado y **no se relee en la ruta de la petición** |
+| Cada campo en crudo y normalizado (§ RF-03) | El tráfico que no atraviesa el proxy |
+
+La terminación TLS puede resolverse en el borde del proveedor de despliegue; en esa topología el proxy recibe la conexión ya descifrada y el requisito RF-04 se satisface fuera del contenedor.
 
 ---
 
@@ -346,20 +375,30 @@ function useLiveEvents() {
 |---|---|
 | RF-01 | Interceptar toda conexión entrante antes de que llegue al servidor de origen |
 | RF-02 | Enrutar hacia distintos backends internos según configuración |
-| RF-03 | Filtrar solicitudes según patrones definidos (SQLi, XSS, payloads conocidos) |
-| RF-04 | Soportar terminación y renovación automática de certificados TLS/SSL |
-| RF-05 | Limitar peticiones por IP en una ventana de tiempo (rate limiting) |
+| RF-03 | Filtrar solicitudes según patrones definidos, sobre la entrada **normalizada**. Clases cubiertas, lista cerrada para esta versión: inyección SQL, XSS, recorrido de rutas/LFI e inyección de comandos |
+| RF-03.1 | Normalizar cada campo antes de comparar: decodificación porcentual hasta punto fijo (acotada), escapes `\uXXXX` de JSON, entidades HTML y eliminación de bytes nulos y caracteres de control. Se conserva además la comparación sobre la forma cruda, porque normalizar también puede destruir una coincidencia |
+| RF-04 | Soportar terminación y renovación automática de certificados TLS/SSL, o delegarla en el borde del proveedor cuando el despliegue lo resuelva ahí |
+| RF-05 | Limitar peticiones por IP en una ventana de tiempo (rate limiting), con presupuesto adicional por recurso para los puntos sensibles a fuerza bruta. El presupuesto por IP subsiste **por encima** del específico: repartir la carga entre rutas no debe multiplicar el presupuesto total |
 | RF-06 | Registrar cada conexión con IP, resultado y motivo, con integridad verificable |
 | RF-07 | Notificar al personal técnico ante patrones de tráfico anómalos |
 | RF-08 | Soportar balanceo de carga entre instancias de un mismo servicio |
 | RF-09 | Exponer un dashboard en tiempo real con el estado del tráfico filtrado |
 | RF-10 | Permitir instalación completa mediante un único comando (Docker Compose) |
+| RF-11 | **(propuesta)** Bloquear automáticamente, y de forma temporal, la dirección que acumule un número configurable de decisiones de bloqueo dentro de una ventana |
+
+**Sobre RF-11.** Es la única incorporación de la v1.2 que amplía el alcance en lugar de precisar lo ya acordado, por lo que se enuncia aparte en vez de derivarse de RF-05. Hasta aquí el sistema decide petición a petición y la respuesta sobre direcciones es manual; un lazo automático de detección a respuesta introduce estado que modifica la política **sin intervención humana**, y con él dos riesgos que no existían:
+
+* **Denegación de servicio autoinfligida.** Un falso positivo deja de costar una petición rechazada y pasa a expulsar a una dirección legítima durante todo el tiempo de vida del bloqueo. El criterio de activación debe fijarse a partir de la tasa de falsos positivos medida, no por intuición, y el bloqueo debe caducar solo.
+* **Bloqueo inducido de terceros.** Si la cabecera de la que se extrae la dirección real fuese falsificable por el cliente, un atacante podría provocar el bloqueo de direcciones ajenas. La función exige, como precondición, que la dirección provenga de una cabecera que un borde de confianza sobrescriba y que el cliente no pueda extender.
+
+Delimitación de RF-11: actúa sobre direcciones IP, no sobre sesiones ni cuentas; el bloqueo es siempre temporal; y no contempla reputación compartida ni fuentes externas de inteligencia.
 
 #### 8.2 No Funcionales
 
 | Categoría | Criterio |
 |---|---|
 | Seguridad | Cifrado en tránsito, mínimo privilegio, actualización periódica de reglas |
+| Resistencia a evasión | La eficacia se mide sobre un corpus que incluye, para cada vector, sus variantes ofuscadas según el modelo de adversario de §2. Se reportan tasa de detección y tasa de falsos positivos; una cifra de detección sin la de falsos positivos no constituye una medición |
 | Disponibilidad | Operación 24/7, tolerancia a fallos, objetivo ≥99% |
 | Rendimiento | Latencia adicional del proxy < 50 ms bajo carga normal |
 | Escalabilidad | Alta de nuevos backends sin interrumpir el servicio |
