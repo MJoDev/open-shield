@@ -147,7 +147,15 @@ OS_ADMIN_PASSWORD_HASH=<the raw bcrypt hash>
 OS_SESSION_SECRET=<openssl rand -hex 32>
 OS_SESSION_TTL_S=28800
 OS_SECURE_COOKIES=true
+OS_TRUSTED_PROXY=100.64.0.0/10
 ```
+
+`OS_TRUSTED_PROXY` matters here for the same reason it does on the proxy, and
+for one more: it is the address the sign-in throttle counts against, and the
+author recorded on every administrative change sealed into the audit chain. Left
+unset the dashboard uses the peer address, which behind the edge is the same for
+everyone — ten failed sign-ins from anywhere lock out everyone. Set too wide, a
+client names itself and the throttle stops existing.
 
 `OS_SECURE_COOKIES=true` is correct here and only here: the platform serves this
 domain over HTTPS. The warning in the operations manual applies to plain HTTP,
@@ -178,8 +186,8 @@ OS_BACKEND_URL=http://rack-backend.railway.internal:8000
 OS_ENGINE_URL=http://engine.railway.internal:8080
 OS_SERVER_NAME=_
 OS_RESOLVER_IPV6=on
-OS_TRUSTED_PROXY=0.0.0.0/0 ::/0
-OS_REAL_IP_HEADER=X-Envoy-External-Address
+OS_TRUSTED_PROXY=100.64.0.0/10
+OS_REAL_IP_HEADER=X-Forwarded-For
 OS_FAIL_MODE=open
 OS_DECIDE_TIMEOUT_MS=150
 OS_MAX_BODY_INSPECT_BYTES=8192
@@ -194,10 +202,18 @@ fail silently if they are wrong:
 - **`OS_TRUSTED_PROXY`** — without it `remote_addr` is the platform edge, so
   `ipblock` and `ratelimit` key the entire internet to a single address. The
   rules keep running and keep reporting; they simply protect nothing.
-- **`OS_REAL_IP_HEADER=X-Envoy-External-Address`** — the header Railway's edge
-  writes with the real client address. `X-Forwarded-For` is a list a client can
-  prepend to, so trusting *that* from `0.0.0.0/0` would let an attacker forge the
-  address an `ipblock` rule is keyed on, or get a third party blocked.
+- **`OS_TRUSTED_PROXY=100.64.0.0/10`, not `0.0.0.0/0`.** The value is the
+  carrier-grade NAT range the edge connects from, read off the proxy's own
+  access log rather than from documentation — verify it against yours before
+  trusting it, and re-check it if addresses ever stop resolving. Widening it to
+  `0.0.0.0/0` looks like it works and is the whole vulnerability: trusting every
+  network means trusting the client, which lets anyone name their own address,
+  slip past an `ipblock` rule and get a third party blocked instead.
+- **`OS_REAL_IP_HEADER=X-Forwarded-For`** — paired with a narrow trusted range,
+  the list is walked from the right and stops at the first address outside it,
+  so entries a client prepended are never reached. `X-Envoy-External-Address`
+  looks like the safer choice and is not: Railway's edge does not set it, so it
+  arrives only when a client sends it, and is believed verbatim.
 - The listening port needs nothing: the platform injects `PORT` and the
   entrypoint follows it.
 

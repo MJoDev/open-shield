@@ -155,7 +155,16 @@ OS_ADMIN_PASSWORD_HASH=<el hash bcrypt en crudo>
 OS_SESSION_SECRET=<openssl rand -hex 32>
 OS_SESSION_TTL_S=28800
 OS_SECURE_COOKIES=true
+OS_TRUSTED_PROXY=100.64.0.0/10
 ```
+
+`OS_TRUSTED_PROXY` importa aquí por la misma razón que en el proxy, y por una
+más: es la dirección contra la que cuenta el limitador de intentos de acceso, y
+la que queda registrada como autora de cada cambio administrativo sellado en la
+cadena de auditoría. Sin definir, el dashboard usa la dirección del par, que
+detrás del borde es la misma para todo el mundo — diez intentos fallidos desde
+cualquier sitio dejan fuera a todos. Demasiado amplia, el cliente se nombra a sí
+mismo y el limitador deja de existir.
 
 `OS_SECURE_COOKIES=true` es correcto aquí y solo aquí: la plataforma sirve este
 dominio sobre HTTPS. La advertencia del manual de operación se refiere a HTTP
@@ -189,8 +198,8 @@ OS_BACKEND_URL=http://rack-backend.railway.internal:8000
 OS_ENGINE_URL=http://engine.railway.internal:8080
 OS_SERVER_NAME=_
 OS_RESOLVER_IPV6=on
-OS_TRUSTED_PROXY=0.0.0.0/0 ::/0
-OS_REAL_IP_HEADER=X-Envoy-External-Address
+OS_TRUSTED_PROXY=100.64.0.0/10
+OS_REAL_IP_HEADER=X-Forwarded-For
 OS_FAIL_MODE=open
 OS_DECIDE_TIMEOUT_MS=150
 OS_MAX_BODY_INSPECT_BYTES=8192
@@ -206,11 +215,20 @@ fallan en silencio si están mal:
   plataforma, de modo que `ipblock` y `ratelimit` asocian internet entero a una
   sola dirección. Las reglas siguen ejecutándose y siguen reportando;
   sencillamente no protegen nada.
-- **`OS_REAL_IP_HEADER=X-Envoy-External-Address`** — la cabecera que el borde de
-  Railway escribe con la dirección real del cliente. `X-Forwarded-For` es una
-  lista a la que el cliente puede anteponer valores, así que confiar en *esa*
-  desde `0.0.0.0/0` permitiría a un atacante falsificar la dirección sobre la
-  que se indexa una regla `ipblock`, o provocar el bloqueo de un tercero.
+- **`OS_TRUSTED_PROXY=100.64.0.0/10`, no `0.0.0.0/0`.** El valor es el rango de
+  NAT de operador desde el que conecta el borde, leído del propio registro de
+  acceso del proxy y no de documentación alguna — compruébalo contra el tuyo
+  antes de fiarte, y vuelve a mirarlo si algún día las direcciones dejan de
+  resolverse. Ampliarlo a `0.0.0.0/0` aparenta funcionar y es la vulnerabilidad
+  entera: confiar en todas las redes es confiar en el cliente, lo que permite a
+  cualquiera declarar su propia dirección, sortear una regla `ipblock` y
+  provocar el bloqueo de un tercero en su lugar.
+- **`OS_REAL_IP_HEADER=X-Forwarded-For`** — junto a un rango de confianza
+  estrecho, la lista se recorre desde la derecha y se detiene en la primera
+  dirección fuera de él, así que las entradas que un cliente haya antepuesto no
+  se alcanzan nunca. `X-Envoy-External-Address` parece la opción más segura y no
+  lo es: el borde de Railway no la escribe, así que solo llega cuando la manda
+  un cliente, y se cree tal cual.
 - El puerto de escucha no necesita nada: la plataforma inyecta `PORT` y el
   entrypoint lo sigue.
 

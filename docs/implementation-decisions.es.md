@@ -326,6 +326,56 @@ actualizar esta sección.
 
 ---
 
+## 11. La dirección del cliente solo se cree desde un borde declarado
+
+**Lo que dice el documento.** El §8.1 indexa RF-05 por la dirección de origen, y
+RF-06 registra "cada conexión con su dirección, resultado y motivo". Ninguno
+dice de dónde sale esa dirección, porque en un solo VPS la pregunta no existe:
+la dirección que abre la conexión es la del cliente.
+
+**Lo que hace el código.** Tanto el proxy como el dashboard leen ahora la
+dirección de `X-Forwarded-For` únicamente cuando la conexión llega desde una red
+declarada en `OS_TRUSTED_PROXY`, y recorren la lista desde la derecha,
+deteniéndose en la primera dirección que quede fuera de ese conjunto. Sin
+definir —el valor por defecto— la cabecera se ignora por completo y prevalece la
+dirección del par.
+
+**Por qué.** Detrás de un borde que termina la conexión, cada petición lleva la
+dirección de ese borde. Indexados por ella, `ipblock` y `ratelimit` cuentan
+internet entero como un único cliente, y el limitador de acceso del dashboard
+deja fuera a todos los operadores a la vez. Ambos fallos son silenciosos: las
+reglas siguen evaluándose, el dashboard sigue reportando, y nada en ninguno de
+los dos indica que el control esté inerte.
+
+La reparación evidente —creerse la cabecera— es peor que la enfermedad, y el
+dashboard se publicó con ella. `clientIP` tomaba la **primera** entrada de
+`X-Forwarded-For` de quien fuera, que es el extremo de la lista que controla el
+cliente. Eso convertía diez intentos de acceso cada quince minutos en un oráculo
+de contraseñas sin límite contra la única cuenta de administrador, porque una
+dirección falsificada distinta daba a cada intento un contador nuevo. Además
+permitía a un atacante elegir la dirección que queda registrada como autora de
+un cambio administrativo — y esa dirección se sella en la cadena de hashes, así
+que la falsificación sale de la verificación con aspecto de evidencia
+autenticada.
+
+Elegir la cabecera tampoco es un detalle. En el primer despliegue escogimos
+`X-Envoy-External-Address`, razonando que una cabecera escrita por el borde no
+puede ser extendida por un cliente. La medición dijo otra cosa: una petición con
+un valor puesto a mano quedó registrada tal cual, lo que demuestra que el borde
+no la escribe, y que una cabecera que *debería* escribir un borde no vale nada
+si ese borde no lo hace. `X-Forwarded-For` con un rango de confianza estrecho es
+la opción que parece más débil y es la sólida, porque el recorrido de derecha a
+izquierda vuelve inalcanzables las entradas del atacante en lugar de fiarse de
+la procedencia de la cabecera.
+
+**La regla que queda.** Una dirección sirve como entrada de un control solo
+cuando un borde de confianza la escribe y el cliente no puede extenderla más
+allá de ese punto. El documento técnico lo enuncia para RF-11; aplica allí donde
+una dirección decida algo, que es toda la cadena de reglas y la puerta de
+entrada del dashboard.
+
+---
+
 ## Fuera de alcance en esta versión
 
 Con su punto de anclaje ya preparado:

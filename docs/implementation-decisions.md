@@ -324,6 +324,51 @@ needs updating.
 
 ---
 
+## 11. The client's address is only believed from a declared edge
+
+**What the document says.** §8.1 keys RF-05 on the source address, and RF-06
+records "each connection with its address, result and reason". Neither says
+where that address comes from, because on a single VPS the question does not
+arise: the address that opens the connection is the client's.
+
+**What the code does.** Both the proxy and the dashboard now read the address
+from `X-Forwarded-For` only when the connection arrives from a network listed
+in `OS_TRUSTED_PROXY`, and they walk the list from the right, stopping at the
+first address outside that set. Unset — the default — the header is ignored
+entirely and the peer address stands.
+
+**Why.** Behind an edge that terminates the connection, every request carries
+the edge's address. Keyed on that, `ipblock` and `ratelimit` count the whole
+internet as one client and the dashboard's sign-in throttle locks out every
+operator at once. Both failures are silent: the rules still evaluate, the
+dashboard still reports, and nothing in either says the control is inert.
+
+The obvious repair — believe the header — is worse than the disease, and the
+dashboard shipped with it. `clientIP` took the *first* entry of
+`X-Forwarded-For` from any caller, which is the end of the list a client
+controls. That turned ten sign-in attempts per fifteen minutes into an
+unlimited password oracle against the single administrator account, because a
+different forged address gave every attempt a fresh counter. It also let an
+attacker choose the address recorded as the author of an administrative change
+— and that address is sealed into the hash chain, so the forgery comes back out
+of verification looking like authenticated evidence.
+
+Picking the header is not a detail either. On a first deployment we chose
+`X-Envoy-External-Address`, reasoning that an edge-written header cannot be
+extended by a client. Measurement said otherwise: a request carrying a
+hand-written value was logged verbatim, which proves the edge does not set it,
+and that a header only an edge *should* write is worthless unless that edge
+actually does. `X-Forwarded-For` with a narrow trusted range is the weaker-
+looking option that is actually sound, because the right-to-left walk makes the
+attacker's entries unreachable rather than trusting the header's provenance.
+
+**The rule this leaves.** An address is usable as a control input only when a
+trusted edge writes it and a client cannot extend it past that point. The
+technical document states this for RF-11; it applies wherever an address decides
+anything, which is every rule in the chain and the dashboard's front door.
+
+---
+
 ## Out of scope in this version
 
 With its anchor point already in place:
