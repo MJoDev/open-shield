@@ -1,0 +1,53 @@
+@startuml 03-deployment
+!include style.iuml
+
+skinparam linetype ortho
+
+cloud "Internet" as internet
+
+node "VPS — Linux + Docker Engine" as vps {
+
+  node "internal network «openshield»" as net {
+
+    node "container: proxy" as c_proxy {
+      artifact "openresty:alpine\n+ lua-resty-http" as a_proxy
+    }
+    node "container: engine" as c_engine {
+      artifact "static Go binary\nengine" as a_engine
+    }
+    node "container: dashboard-api" as c_dash {
+      artifact "static Go binary\n+ embedded SPA" as a_dash
+    }
+    node "container: redis" as c_redis {
+      artifact "redis:7-alpine" as a_redis
+    }
+    node "container: db" as c_db {
+      artifact "postgres:16-alpine" as a_db
+    }
+    node "container: backend" as c_back {
+      artifact "origin application\n(any technology)" as a_back
+    }
+  }
+
+  folder "db-data volume" as vol
+}
+
+internet --> c_proxy : 80 / 443 published
+internet --> c_dash  : 8081 published
+c_proxy --> c_engine : 8080 — not published
+c_proxy --> c_back   : OS_BACKEND_URL
+c_engine --> c_redis : 6379
+c_engine --> c_db    : 5432
+c_dash   --> c_redis
+c_dash   --> c_db
+c_dash   --> c_engine
+c_db --> vol
+
+note right of vps
+  Each install is independent: there is no central
+  instance managing several VPSs. It comes up with
+  "docker compose up" and all of its configuration
+  comes from environment variables (deploy/.env).
+end note
+
+@enduml

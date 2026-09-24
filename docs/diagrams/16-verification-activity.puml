@@ -1,0 +1,63 @@
+@startuml 16-verification-activity
+!include style.iuml
+
+start
+:the auditor requests\nGET /api/v1/audit/verify?from&to;
+
+if (does the range start at\nthe beginning of the log?) then (yes)
+  :anchor := genesis hash\n(64 zeros);
+else (no)
+  :anchor := hash of the entry\nimmediately **before** the range;
+  note right
+    Without an anchor, a first entry rewritten
+    in an internally consistent way would pass
+    verification: there would be nothing to
+    compare its prev_hash against.
+  end note
+endif
+
+:newChainWalker(anchor);
+:open a cursor over audit_log\nordered by **seq** ascending;
+
+repeat
+  :read the next entry;
+  :position := position + 1;
+
+  if (entry.prev_hash == expected?) then (no)
+    #FDECEC:**chain broken** — link
+    ..
+    an entry was deleted,
+    reordered or inserted here;
+    :build VerifyResult\nOK=false, BrokenAt=id,\nPosition, Timestamp, Detail;
+    stop
+  else (yes)
+  endif
+
+  :recompute ComputeHash()\nover the content read;
+
+  if (recomputed == entry.hash?) then (no)
+    #FDECEC:**chain broken** — content
+    ..
+    this entry's payload, timestamp,
+    kind or request_id was modified
+    after it was written;
+    :build VerifyResult\nOK=false, BrokenAt=id, …;
+    stop
+  else (yes)
+  endif
+
+  :expected := entry.hash;
+repeat while (entries left in the range?) is (yes) not (no)
+
+#E8F3E8:VerifyResult\nOK=true, Checked=position;
+:show "Chain intact"\nwith the verified total;
+stop
+
+note right
+  It stops at the first break: every later entry
+  is unverifiable against a link that is already
+  broken, and counting derived breaks would
+  obscure the real point of tampering.
+end note
+
+@enduml

@@ -99,7 +99,7 @@ hash-password: ## Genera el hash bcrypt del administrador. Uso: make hash-passwo
 
 # --- Pruebas -----------------------------------------------------------------
 #
-# La pirámide completa está documentada en docs/estrategia-de-pruebas.md.
+# La pirámide completa está documentada en docs/testing-strategy.md.
 # Todos estos pasos son obligatorios para aprobar un PR.
 
 .PHONY: test

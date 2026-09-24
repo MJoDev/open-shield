@@ -168,7 +168,7 @@ func TestNumbersSurviveTheRoundTripUnchanged(t *testing.T) {
 // is single-digit milliseconds and status is three digits. The trap is for
 // whoever adds the next numeric field. Fixing it means changing what gets
 // hashed, which invalidates every chain already in existence, so it is recorded
-// as a known boundary instead — see docs/decisiones-implementacion.md.
+// as a known boundary instead — see docs/implementation-decisions.md.
 //
 // If this test starts failing, the limitation has been fixed. Update the
 // document and delete it.
@@ -196,7 +196,7 @@ func TestExtremeMagnitudesAreOutsideTheChainsRange(t *testing.T) {
 			}
 			if result.OK {
 				t.Fatalf("%v now survives the round trip — the limitation is fixed; "+
-					"update docs/decisiones-implementacion.md and remove this test", value)
+					"update docs/implementation-decisions.md and remove this test", value)
 			}
 		})
 	}

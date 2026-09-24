@@ -1,0 +1,77 @@
+@startuml 11-repository-pattern
+!include style.iuml
+
+skinparam linetype ortho
+
+interface "audit.Repository" as Repo <<Repository>> {
+  +Append(ctx, AuditEntry) : error
+  +VerifyChain(ctx, from, to) : (VerifyResult, error)
+  +Head(ctx) : (string, error)
+  +List(ctx, Filter) : ([]AuditEntry, error)
+  +Count(ctx, Filter) : (int64, error)
+  +Stats(ctx, window) : (Stats, error)
+  +Close() : error
+}
+
+class PostgresRepository <<ConcreteRepository>> {
+  -pool : *pgxpool.Pool
+  --
+  Production. Expression indexes
+  over the JSONB, append-only
+  triggers, ordering by seq.
+}
+
+class MemoryRepository <<ConcreteRepository>> {
+  -entries : []AuditEntry
+  -mu : sync.RWMutex
+  --
+  Unit tests. Lets verification be
+  exercised without a database.
+}
+
+class "SQLiteRepository" as Sqlite <<deferred v1.1>> #FAFBFC {
+  The extension point already exists:
+  the interface has two implementations,
+  so a third one does not touch the
+  decision logic.
+}
+
+class chainWalker <<collaborator>> {
+  -prev : string
+  -position : int64
+  --
+  +step(entry) : *VerifyResult
+  +result() : VerifyResult
+}
+
+class Writer <<sole write client>> {
+  +Record(kind, requestID, payload)
+  +RecordSync(ctx, ...) : error
+}
+
+class "httpapi (dashboard)" as Dash <<read client>>
+
+Repo <|.. PostgresRepository
+Repo <|.. MemoryRepository
+Repo <|.. Sqlite
+PostgresRepository ..> chainWalker : delegates verification
+MemoryRepository ..> chainWalker : delegates verification
+Writer --> Repo : uses
+Dash --> Repo : uses (read only)
+
+note right of chainWalker
+  Both implementations stream their entries
+  through the same walker, so there is
+  **a single** definition of what "the chain
+  is intact" means. If each store
+  reimplemented it, they could disagree.
+end note
+
+note bottom of Repo
+  VerifyChain returns a VerifyResult, not a bool:
+  faced with a broken chain the operator's first
+  question is *where*, and only the store can
+  answer it while it walks the history.
+end note
+
+@enduml

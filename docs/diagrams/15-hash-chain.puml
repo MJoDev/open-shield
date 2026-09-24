@@ -1,0 +1,88 @@
+@startuml 15-hash-chain
+!include style.iuml
+
+skinparam linetype ortho
+skinparam objectBackgroundColor #F5F7FA
+skinparam objectBorderColor #3C4650
+
+object "Genesis" as g #EDF1F6 {
+  hash = "000…000"  (64 zeros)
+}
+
+object "AuditEntry  seq = 1" as e1 {
+  id = "3f2a…"
+  request_id = "a91c…"
+  ts = 2026-03-04T11:02:19.184203Z
+  kind = "traffic"
+  payload = {ip, method, path, verdict, …}
+  --
+  **prev_hash** = 000…000
+  **hash** = 7b41…
+}
+
+object "AuditEntry  seq = 2" as e2 {
+  id = "8c0d…"
+  request_id = "a91c…"
+  kind = "admin"
+  payload = {actor, action, rule, enabled}
+  --
+  **prev_hash** = 7b41…
+  **hash** = e2f9…
+}
+
+object "AuditEntry  seq = 3" as e3 {
+  id = "1d77…"
+  kind = "traffic"
+  payload = {…, rule: "sqli", reason: "…"}
+  --
+  **prev_hash** = e2f9…
+  **hash** = 4a0b…
+}
+
+object "Sealing function" as f #FFF8E1 {
+  hash = SHA-256(
+     len‖prev_hash  ‖
+     len‖id         ‖
+     len‖request_id ‖
+     len‖ts         ‖
+     len‖kind       ‖
+     len‖canonicalJSON(payload)
+  )
+  ..
+  len = field length in 8 big-endian bytes
+}
+
+g -right-> e1 : anchor
+e1 -right-> e2 : prev_hash = hash(n−1)
+e2 -right-> e3
+
+f .up.> e1
+f .up.> e2
+f .up.> e3
+
+note bottom of f
+  **Why each decision matters.**
+  • Canonical JSON (sorted keys, no whitespace, no HTML
+    escaping): Go randomizes map iteration, so
+    fmt.Sprint would give a different hash on every run
+    and verification would report tampering on an
+    intact chain.
+  • Length prefix: without it, {"ab","c"} and {"a","bc"}
+    would produce the same digest, and fields could be
+    re-partitioned without breaking the hash.
+  • id, request_id and kind are part of the digest: outside
+    it they could be rewritten without breaking the chain.
+  • ts in RFC3339Nano UTC truncated to microseconds, which
+    is timestamptz's resolution — the hashed value is
+    exactly the one that comes back on a read.
+end note
+
+note top of e2
+  Altering this entry changes its hash, so the next
+  entry's prev_hash stops matching.
+  Deleting it breaks the link between 1 and 3.
+  In both cases verification names the exact
+  position of the break.
+end note
+
+@enduml

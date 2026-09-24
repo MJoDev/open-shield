@@ -1,0 +1,83 @@
+@startuml 06-use-cases
+!include style.iuml
+
+left to right direction
+skinparam packageStyle rectangle
+skinparam nodesep 12
+skinparam ranksep 45
+
+actor "Legitimate\nclient" as client
+actor "Unauthorized\nexternal actor" as attacker #FDECEC
+actor "Security\noperator" as operator
+actor "Auditor /\ninvestigator" as auditor
+actor "DevOps\nintegrator" as devops
+
+rectangle "open-shield" {
+
+  package "Data plane — unauthenticated" as PD {
+    usecase "UC-01\nCross the perimeter" as UC01
+    usecase "UC-02\nFilter malicious\ntraffic" as UC02
+    usecase "UC-03\nRate-limit\nper source" as UC03
+    usecase "UC-04\nRecord the decision\nin the forensic log" as UC04
+  }
+
+  package "Control plane — requires UC-05" as PC {
+    usecase "UC-05\nSign in to\nthe dashboard" as UC05
+    usecase "UC-06\nMonitor traffic\nin real time" as UC06
+    usecase "UC-07\nQuery the event\nhistory" as UC07
+    usecase "UC-08\nEnable or disable\na rule" as UC08
+    usecase "UC-09\nManage the IP\naccess list" as UC09
+    usecase "UC-10\nVerify chain\nintegrity" as UC10
+    usecase "UC-11\nCheck operational\nstatus" as UC11
+    usecase "UC-12\nFollow a request\nby its request_id" as UC12
+  }
+
+  package "Deployment" as PE {
+    usecase "UC-13\nDeploy the stack\nwith one command" as UC13
+    usecase "UC-14\nApply the database\nschema" as UC14
+  }
+}
+
+client   --> UC01
+attacker --> UC01
+
+operator --> UC06
+operator --> UC08
+operator --> UC09
+operator --> UC11
+
+auditor --> UC07
+auditor --> UC10
+
+devops --> UC13
+
+UC01 ..> UC02 : <<include>>
+UC01 ..> UC03 : <<include>>
+UC02 ..> UC04 : <<include>>
+UC03 ..> UC04 : <<include>>
+
+UC12 .u.> UC07 : <<extend>>
+UC08 ..> UC04 : <<include>>
+UC09 ..> UC04 : <<include>>
+
+UC13 ..> UC14 : <<include>>
+
+note bottom of PC
+  Every control-plane use case includes UC-05: the
+  session is checked in the Require() middleware, before
+  the request reaches the handler. The edges are omitted
+  from the diagram for readability.
+  ..
+  UC-05, UC-08 and UC-09 also include UC-04: sign-ins and
+  administrative changes go into the same chain as external
+  traffic, with kind='admin'.
+end note
+
+note bottom of PD
+  UC-01 is exercised alike by a legitimate client and by
+  an unauthorized actor: the system cannot tell which is
+  which up front, and that is exactly why UC-02 and
+  UC-03 are included rather than alternative.
+end note
+
+@enduml

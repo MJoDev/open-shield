@@ -1,0 +1,63 @@
+@startuml 04-request-sequence
+!include style.iuml
+
+autonumber "<b>[0]"
+
+actor Client as cli
+participant "Proxy\naccess_by_lua" as proxy
+participant "Engine\nPOST /v1/decide" as engine
+participant "Rule\nchain" as chain
+participant "Writer\nsingle goroutine" as writer
+database "PostgreSQL\naudit_log" as pg
+queue "Redis\nPub/Sub" as redis
+participant "WebSocket\nhub" as hub
+actor Operator as op
+participant "Origin\nbackend" as back
+
+cli -> proxy : HTTP request
+activate proxy
+proxy -> proxy : generate request_id (UUID)\nread the body up to 8 KiB
+proxy -> engine : {ip, method, path, query,\nheaders, body, request_id}
+activate engine
+
+engine -> chain : Decide(ctx, RequestContext)
+activate chain
+chain -> chain : ipblock → ratelimit → sqli → xss\n(first "block" wins)
+chain --> engine : Decision{verdict, rule, reason, status}
+deactivate chain
+
+engine --> proxy : JSON verdict response
+deactivate engine
+
+note over engine
+  The verdict is returned **before** any audit
+  work starts: §8.2 budgets less than 50 ms
+  of added latency.
+end note
+
+engine -> writer : Record(traffic, request_id, payload)
+activate writer
+
+alt verdict == "allow"
+  proxy -> back : forward with X-Request-ID
+  activate back
+  back --> proxy : origin response
+  deactivate back
+  proxy --> cli : backend response
+else verdict == "block"
+  proxy --> cli : 403 / 429 + page with the request_id
+end
+deactivate proxy
+
+writer -> writer : NormalizePayload → Seal(head)
+writer -> pg : INSERT (append-only)
+activate pg
+pg --> writer : ok
+deactivate pg
+writer -> redis : PUBLISH openshield:events
+deactivate writer
+
+redis -> hub : audit entry
+hub -> op : live WebSocket frame
+
+@enduml

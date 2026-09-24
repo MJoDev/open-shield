@@ -1,0 +1,76 @@
+' Shared style for the technical document's diagrams.
+' Include with:  !include style.iuml
+
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam dpi 150
+skinparam shadowing false
+skinparam roundCorner 6
+
+skinparam ArrowColor #3C4650
+skinparam ArrowFontSize 11
+
+skinparam rectangle {
+  BackgroundColor #F5F7FA
+  BorderColor #3C4650
+  FontColor #1C1F24
+}
+skinparam component {
+  BackgroundColor #F5F7FA
+  BorderColor #3C4650
+  FontColor #1C1F24
+}
+skinparam database {
+  BackgroundColor #EDF1F6
+  BorderColor #3C4650
+}
+skinparam queue {
+  BackgroundColor #EDF1F6
+  BorderColor #3C4650
+}
+skinparam node {
+  BackgroundColor #FFFFFF
+  BorderColor #3C4650
+}
+skinparam class {
+  BackgroundColor #F5F7FA
+  BorderColor #3C4650
+  ArrowColor #3C4650
+  FontColor #1C1F24
+  AttributeFontSize 11
+  StereotypeFontColor #5A6672
+}
+skinparam interface {
+  BackgroundColor #E3EAF2
+  BorderColor #2B5D8C
+}
+skinparam usecase {
+  BackgroundColor #F5F7FA
+  BorderColor #3C4650
+}
+skinparam actor {
+  BackgroundColor #F5F7FA
+  BorderColor #3C4650
+}
+skinparam sequence {
+  ArrowColor #3C4650
+  LifeLineBorderColor #8A96A3
+  LifeLineBackgroundColor #EDF1F6
+  ParticipantBackgroundColor #F5F7FA
+  ParticipantBorderColor #3C4650
+  BoxBackgroundColor #FAFBFC
+  BoxBorderColor #C3CBD4
+}
+skinparam activity {
+  BackgroundColor #F5F7FA
+  BorderColor #3C4650
+  DiamondBackgroundColor #EDF1F6
+  DiamondBorderColor #3C4650
+  StartColor #3C4650
+  EndColor #3C4650
+}
+skinparam note {
+  BackgroundColor #FFF8E1
+  BorderColor #C9A227
+  FontSize 11
+}

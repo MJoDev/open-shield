@@ -3,7 +3,7 @@
 <!--
 Qué hace este cambio y qué problema resuelve. Si toca una decisión de diseño,
 enlaza la sección del documento técnico o la entrada de
-docs/decisiones-implementacion.md que la explica.
+docs/implementation-decisions.md que la explica.
 -->
 
 ## Cómo se ha comprobado
@@ -21,13 +21,13 @@ sale de ahí: qué probaste a mano, contra qué stack, y qué observaste.
       y tráfico legítimo parecido en `benign.json`.
 - [ ] Si toca el encadenado de hashes (`internal/model`, `internal/audit`):
       los tests de determinismo y los objetivos de fuzzing siguen pasando, y
-      la desviación queda anotada en `docs/decisiones-implementacion.md`.
+      la desviación queda anotada en `docs/implementation-decisions.md`.
 - [ ] Si añade una variable de entorno: está en `deploy/.env.example` con un
       comentario que dice qué hace y cómo elegir su valor (§5.5).
 - [ ] Si cambia la latencia del camino de la petición: `make test-load` sigue
       dentro del presupuesto de 50 ms del §8.2.
 - [ ] Los documentos que van en pareja se actualizaron los dos o ninguno:
-      `documento-tecnico.md` ↔ `technical-document.md`, `README.md` ↔ `README.es.md`.
+      cada `docs/*.md` ↔ su `docs/*.es.md`, y `README.md` ↔ `README.es.md`.
 
 ## Notas para quien revise
 

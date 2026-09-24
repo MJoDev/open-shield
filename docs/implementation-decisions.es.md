@@ -1,7 +1,9 @@
 # Decisiones de implementación
 
+*[English](implementation-decisions.md)*
+
 Registro de dónde el código se aparta del
-[documento técnico](documento-tecnico.md), y por qué. El documento
+[documento técnico](technical-document.es.md), y por qué. El documento
 técnico sigue siendo el diseño; esto es lo que se encontró al construirlo.
 
 Las secciones (§) se refieren al documento técnico.
@@ -239,7 +241,7 @@ test/
 corpus lo consumen tres niveles distintos y los ficheros van embebidos con
 `//go:embed`. Los scripts de k6 leen los mismos JSON directamente.
 
-Ver `docs/estrategia-de-pruebas.md` para qué defiende cada nivel.
+Ver `docs/testing-strategy.es.md` para qué defiende cada nivel.
 
 ### 8.1 Etiquetas de compilación, no `testing.Short()`
 

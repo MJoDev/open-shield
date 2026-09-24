@@ -12,7 +12,7 @@ decisión queda registrada en un log de auditoría encadenado por hashes: si
 alguien altera o borra un registro, la verificación lo detecta y señala la
 entrada exacta.
 
-Implementación del [documento técnico de decisiones](docs/documento-tecnico.md).
+Implementación del [documento técnico de decisiones](docs/technical-document.es.md).
 Sin dependencias propietarias y sin acoplamiento a ninguna infraestructura
 concreta: el mismo stack se instala igual en cualquier VPS.
 
@@ -195,7 +195,7 @@ cd dashboard/web && npm install && npm run dev   # proxeado a localhost:8081
 ## Pruebas
 
 Seis niveles, y los seis son obligatorios para fusionar un pull request. La
-estrategia completa está en [el documento de pruebas](docs/estrategia-de-pruebas.md).
+estrategia completa está en [el documento de pruebas](docs/testing-strategy.es.md).
 
 ```bash
 make test              # unitarios y semillas de fuzzing — sin dependencias
@@ -233,14 +233,21 @@ requisito es un gate y no un párrafo.
 
 ## Documentación
 
-- [Documento técnico](docs/documento-tecnico.md)
+- [Documento técnico](docs/technical-document.es.md)
   ([English](docs/technical-document.md))
-- [Decisiones de implementación](docs/decisiones-implementacion.md) — dónde y
+- [Decisiones de implementación](docs/implementation-decisions.es.md) — dónde y
   por qué el código se aparta del documento técnico
-- [Manual de operación](docs/manual-operacion.md) — despliegue, ajuste y
+- [Manual de operación](docs/operations-manual.es.md) — despliegue, ajuste y
   diagnóstico
-- [Estrategia de pruebas](docs/estrategia-de-pruebas.md) — qué defiende cada
+- [Estrategia de pruebas](docs/testing-strategy.es.md) — qué defiende cada
   nivel, cómo ejecutarlo y cómo bloquea un pull request
+- [Hallazgos de cobertura de filtrado](docs/filtering-coverage-findings.es.md) —
+  huecos de evasión medidos en la cadena de reglas y qué debe resolver la v1.2
+- [Diagramas](docs/diagrams/) — fuentes PlantUML de las figuras de arquitectura
+  (en inglés)
+
+La documentación se escribe en inglés; cada documento tiene al lado su
+traducción al español con el sufijo `.es.md`.
 
 ## Licencia
 

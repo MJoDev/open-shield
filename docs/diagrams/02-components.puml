@@ -1,0 +1,69 @@
+@startuml 02-components
+!include style.iuml
+
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+package "proxy/" as p_proxy {
+  component "nginx.conf\nopenshield.conf.template" as nginxconf
+  component "openshield.lua\naccess_by_lua phase" as lua
+}
+
+package "engine/" as p_engine {
+  component "httpapi\n/v1/decide, /v1/audit" as e_api
+  component "rules\nfilter chain" as e_rules
+  component "ratelimit\nsliding window" as e_rl
+}
+
+package "internal/ — shared" as p_shared {
+  component "model\ntypes + canonical hash" as s_model
+  component "audit\nRepository + Writer" as s_audit
+  component "events\nRedis pub/sub" as s_events
+  component "rulestore\nmutable configuration" as s_store
+  component "config\n12-factor loading" as s_config
+  component "migrate\nschema at startup" as s_migrate
+}
+
+package "dashboard/" as p_dash {
+  component "auth\nsigned session" as d_auth
+  component "httpapi\nREST /api/v1" as d_api
+  component "ws\nWebSocket hub" as d_ws
+  component "web\nReact + Vite SPA" as d_web
+}
+
+database "PostgreSQL" as pg
+queue "Redis" as redis
+
+nginxconf --> lua
+lua --> e_api : HTTP with keepalive
+
+e_api --> e_rules
+e_rules --> e_rl
+e_rules ..> s_model
+e_api --> s_audit
+s_audit --> s_model
+s_audit --> s_events
+e_api ..> s_store : read
+
+d_api --> d_auth
+d_api --> s_audit : read only
+d_api --> s_store : read and write
+d_api --> e_api : POST /v1/audit
+d_ws --> s_events : subscribe
+d_api --> d_ws
+d_web --> d_api
+
+s_audit --> pg
+s_store --> pg
+s_migrate --> pg
+s_events --> redis
+e_rl --> redis
+
+note right of p_shared
+  Go's "internal" rule forces this split:
+  a package under engine/internal/ can only be
+  imported from engine/…, and the dashboard needs
+  model and chain verification for the forensic view.
+end note
+
+@enduml

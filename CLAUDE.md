@@ -66,7 +66,9 @@ migrations/postgres/ schema, applied automatically at engine startup
 examples/            demo backend
 deploy/              docker-compose{,.quickstart}.yml and .env.example
 scripts/             smoke.sh, tamper-demo.sh
-docs/                technical document, decisions, operations manual
+docs/                technical document, decisions, operations manual,
+                     testing strategy, findings; *.es.md = Spanish translation
+docs/diagrams/       PlantUML sources (English) + rendered PNGs
 ```
 
 **The `internal/` split is load-bearing.** Go only allows `engine/internal/…`
@@ -74,7 +76,7 @@ to be imported from `engine/…`. The dashboard needs `model` and the chain
 verification for the forensic view, so anything shared lives in the root
 `internal/`. Do not move a shared package down into `engine/internal/` — it
 will not compile. This is a deliberate departure from §7 of the technical
-document, recorded in `docs/decisiones-implementacion.md` §3.
+document, recorded in `docs/implementation-decisions.md` §3.
 
 Module path: `github.com/open-shield/open-shield`.
 
@@ -115,7 +117,7 @@ OS_ADMIN_PASSWORD='...' make tamper-demo   # CORRUPTS the log, on purpose
 ```
 
 Run `make test` before calling a change done. The full pyramid, what each level
-defends, and how CI gates a PR are in `docs/estrategia-de-pruebas.md`.
+defends, and how CI gates a PR are in `docs/testing-strategy.md`.
 
 Frontend hot reload: `cd dashboard/web && npm install && npm run dev`
 (proxied to `localhost:8081`).
@@ -244,14 +246,18 @@ reach the engine in under a second over the Redis control channel, with a
   comments are dense and justify decisions; keep new ones the same.
 - **Commit messages are English**, conventional-commit prefixed (`docs:`,
   `feat:`, `fix:`), subject in the imperative.
-- **`docs/decisiones-implementacion.md` is a living record.** When the code
+- **`docs/implementation-decisions.md` is a living record.** When the code
   departs from the technical document, add an entry there: what the document
   says, what the code does, and *why*. Do not silently diverge.
-- **Docs are Spanish-primary with English translations.**
-  `documento-tecnico.md` ↔ `technical-document.md` are parallel and must stay
-  in sync; `decisiones-implementacion.md` and `manual-operacion.md` are
-  Spanish-only. `README.md` (English) ↔ `README.es.md` are parallel — update
-  both or neither. `Makefile` help strings are Spanish.
+- **Docs are English-primary; Spanish lives beside them as `*.es.md`.** Every
+  `docs/foo.md` has a `docs/foo.es.md` translation, and `README.md` ↔
+  `README.es.md` — update both or neither. A Spanish file without the `.es`
+  suffix does not belong in the repo. Diagrams are English only.
+  `Makefile` help strings are Spanish.
+- **The repo is public and generic.** No institution, company, client, thesis
+  or academic framing (chapters, advisors, "memoria") in anything versioned.
+  Private working material lives outside the repo; `.gitignore` blocks office
+  documents as a backstop.
 - Tests live beside the code (`*_test.go`). The chain properties in
   `internal/model/audit_test.go` — including determinism over 1,000 recomputes
   — are the regression protection for the whole forensic claim. Extend them
@@ -263,7 +269,7 @@ reach the engine in under a second over the Redis control channel, with a
 - **The attack corpus is `test/corpus/`, and it is shared.** The rule tests, the
   end-to-end suite and the k6 attack scenario all read it, so a vector is added
   once and covered three times. Adding one means editing a JSON file — see
-  `docs/estrategia-de-pruebas.md` §2 for how, including the ordering trap.
+  `docs/testing-strategy.md` §2 for how, including the ordering trap.
 - Integration and end-to-end tests sit behind `//go:build integration` and
   `//go:build e2e`, so `go test ./...` stays dependency-free. Go's `internal`
   rule splits them across three directories; `test/harness/` is what they share,
@@ -292,7 +298,7 @@ reach the engine in under a second over the Redis control channel, with a
   they are not re-read from the filesystem on the request path.
 - The proxy uses `access_by_lua`, **not** `auth_request`: `auth_request`
   discards the request body, which would blind the `sqli`/`xss` rules to the
-  most common vector (§1 of `decisiones-implementacion.md`).
+  most common vector (§1 of `implementation-decisions.md`).
 
 ---
 
@@ -311,6 +317,11 @@ reach the engine in under a second over the Redis control channel, with a
 
 ## Reference
 
-- `docs/technical-document.md` — the design (`docs/documento-tecnico.md` in Spanish)
-- `docs/decisiones-implementacion.md` — where and why the code departs from it
-- `docs/manual-operacion.md` — deployment, tuning, diagnostics, latency numbers
+- `docs/technical-document.md` — the design (`.es.md` for Spanish)
+- `docs/implementation-decisions.md` — where and why the code departs from it
+- `docs/operations-manual.md` — deployment, tuning, diagnostics, latency numbers
+- `docs/filtering-coverage-findings.md` — measured evasion gaps in the rule
+  chain and what the v1.2 technical document has to resolve. Read it before
+  touching `patterns.json` or `scanTargets`: the open findings are normalization
+  depth, XSS signatures anchored to literal characters, and three attack classes
+  with no signature at all.

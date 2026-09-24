@@ -1,0 +1,91 @@
+@startuml 10-strategy-pattern
+!include style.iuml
+
+skinparam linetype ortho
+
+interface Rule <<Strategy>> {
+  +Name() : string
+  +Evaluate(ctx, *RequestContext) : (Verdict, string)
+}
+
+interface statusRule <<optional extension>> {
+  +BlockStatus() : int
+}
+
+class Engine <<Context>> {
+  -rules : []Rule
+  -enabled : map[string]bool
+  -mu : sync.RWMutex
+  --
+  +Decide(ctx, req) : Decision
+  +SetEnabled(map[string]bool)
+  +Enabled() : map[string]bool
+  +Names() : []string
+}
+
+class IPBlock <<ConcreteStrategy>> {
+  -allow : []netip.Prefix
+  -deny : []netip.Prefix
+  -notes : map[string]string
+  --
+  +Name() = "ipblock"
+  +Evaluate(...)
+  +Set(entries []IPRule) : []error
+  +Size() : (allow, deny int)
+}
+
+class RateLimit <<ConcreteStrategy>> {
+  -limiter : *ratelimit.Limiter
+  --
+  +Name() = "ratelimit"
+  +Evaluate(...)
+  +**BlockStatus() = 429**
+}
+
+class PatternRule <<ConcreteStrategy>> {
+  -name : string
+  -signatures : []Signature
+  -maxScan : int
+  --
+  +Name() : "sqli" | "xss"
+  +Evaluate(...)
+}
+
+class Signature <<data>> {
+  +ID : string
+  +Pattern : string «RE2»
+  +Description : string
+  -re : *regexp.Regexp
+}
+
+Rule <|.. IPBlock
+Rule <|.. RateLimit
+Rule <|.. PatternRule
+statusRule <|.. RateLimit
+Engine o--> "1..*  {ordered}" Rule : chain
+PatternRule *--> "0..*" Signature
+
+note right of Engine
+  The engine knows the interface and nothing else:
+  it does not know what a SQL injection looks like
+  or how a rate limit is counted. Adding a rule
+  means adding a type; the engine does not change.
+end note
+
+note bottom of PatternRule
+  The "sqli" and "xss" rules are **the same class**
+  with a different signature set: the difference
+  between them is data, not code. It is the clearest
+  evidence that the abstraction sits in the
+  right place.
+end note
+
+note left of statusRule
+  Segregated interface: keeping BlockStatus out
+  of Rule means a new rule only has to implement
+  two methods. The engine discovers it with a
+  type assertion and falls back to 403 when it
+  is absent.
+end note
+
+@enduml

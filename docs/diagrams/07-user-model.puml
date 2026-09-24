@@ -1,0 +1,96 @@
+@startuml 07-user-model
+!include style.iuml
+
+skinparam linetype ortho
+
+package "Conceptual role model" {
+
+  abstract class Actor {
+    +identifier
+    +origin
+  }
+
+  class "Traffic subject" as Subject {
+    Interacts without authenticating.
+    Known by its source address
+    and by what it sends.
+    --
+    permissions: none
+    identified by: ip + request_id
+  }
+
+  class "Security operator" as Operator {
+    Manages what the proxy blocks.
+    --
+    permissions: full read +
+    configuration write
+  }
+
+  class "Auditor" as Auditor {
+    Uses the log as evidence.
+    An organizational role, not a
+    technical one: in v1 it shares
+    a credential with the operator.
+    --
+    permissions: read + verify
+  }
+
+  class "DevOps integrator" as DevOps {
+    Deploys and upgrades the stack.
+    Does not go through the dashboard:
+    works on the host and on deploy/.env.
+    --
+    permissions: deployment control
+  }
+
+  Actor <|-- Subject
+  Actor <|-- Operator
+  Actor <|-- Auditor
+  Actor <|-- DevOps
+}
+
+package "Implemented identity (v1)" {
+
+  class "Single administrator" as Admin <<configuration>> {
+    +OS_ADMIN_USER : string
+    +OS_ADMIN_PASSWORD_HASH : bcrypt
+    --
+    There is no users table.
+    There is nothing to enumerate.
+  }
+
+  class "Session" as Session <<signed token>> {
+    +user : string
+    +expiry : unix
+    +signature : HMAC-SHA256
+    --
+    format: base64(user).exp.signature
+    cookie: openshield_session
+    HttpOnly, SameSite=Strict
+    TTL: OS_SESSION_TTL_S (8 h)
+  }
+
+  class "Sign-in attempt\nlimiter" as Lockout {
+    Bounds password guessing
+    per source address.
+  }
+
+  Admin "1" -- "0..*" Session : issues >
+  Admin .. Lockout : protected by >
+}
+
+Operator ..> Admin : authenticates as
+Auditor  ..> Admin : authenticates as
+Subject  ..> Session : **never** obtains
+
+note bottom
+  Acknowledged v1 limitation: operator and auditor are distinct
+  organizational roles sharing a single technical credential.
+  Separation of privileges needs a users table with roles,
+  deferred to v1.1. Traceability is not lost: every
+  administrative action is recorded in the chain with the
+  "actor" field, which the server sets and the client cannot
+  overwrite.
+end note
+
+@enduml

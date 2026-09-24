@@ -1,5 +1,7 @@
 # Manual de operación
 
+*[English](operations-manual.md)*
+
 Despliegue, ajuste y diagnóstico de open-shield.
 
 ---
@@ -239,7 +241,7 @@ minutos.
 El rate limiting se desactiva durante la medición a propósito: el motor
 identifica al cliente por la dirección de origen, todos los usuarios virtuales
 salen de una sola, y con el límite por defecto la corrida se estrangularía a sí
-misma y mediría el limitador. Ver `docs/estrategia-de-pruebas.md` §4.5.
+misma y mediría el limitador. Ver `docs/testing-strategy.es.md` §4.5.
 
 ### 5.2 De dónde sale la sobrecarga
 

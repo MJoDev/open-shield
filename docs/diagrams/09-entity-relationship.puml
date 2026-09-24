@@ -1,0 +1,85 @@
+@startuml 09-entity-relationship
+!include style.iuml
+
+hide circle
+skinparam linetype ortho
+
+entity "audit_log" as audit <<append-only>> {
+  * **seq** : BIGSERIAL <<PK>>
+  --
+  * id : UUID <<UQ>>
+  * request_id : TEXT
+  * ts : TIMESTAMPTZ
+  * kind : TEXT <<CHECK: traffic|system|admin>>
+  * payload : JSONB
+  * prev_hash : CHAR(64)
+  * hash : CHAR(64) <<UQ>>
+  --
+  indexes
+  ..
+  audit_log_ts_idx (ts DESC)
+  audit_log_kind_ts_idx (kind, ts DESC)
+  audit_log_request_idx (request_id) partial
+  audit_log_verdict_idx ((payload->>'verdict'), ts DESC)
+  audit_log_ip_idx ((payload->>'ip'), ts DESC)
+  audit_log_rule_idx ((payload->>'rule'), ts DESC)
+  --
+  triggers
+  ..
+  audit_log_no_modify — BEFORE UPDATE OR DELETE
+  audit_log_no_truncate — BEFORE TRUNCATE
+}
+
+entity "rules" as rules <<mutable>> {
+  * **name** : TEXT <<PK>>
+  --
+  * enabled : BOOLEAN = TRUE
+  * config : JSONB = '{}'
+  * updated_at : TIMESTAMPTZ = now()
+  * updated_by : TEXT = ''
+  --
+  rows seeded by migration 002
+  ..
+  ipblock · ratelimit · sqli · xss
+}
+
+entity "ip_rules" as iprules <<mutable>> {
+  * **cidr** : CIDR <<PK>>
+  --
+  * action : TEXT <<CHECK: allow|deny>>
+  * note : TEXT = ''
+  * created_at : TIMESTAMPTZ = now()
+  * created_by : TEXT = ''
+  --
+  index
+  ..
+  ip_rules_action_idx (action)
+}
+
+entity "schema_migrations" as mig <<control>> {
+  * **version** : TEXT <<PK>>
+  --
+  * applied_at : TIMESTAMPTZ
+}
+
+audit "1" -[#2B5D8C,bold]- "0..1" audit : **prev_hash → hash**\nintegrity chain
+
+rules ||..o{ audit : every change produces\na kind='admin' entry
+iprules ||..o{ audit : every add or remove produces\na kind='admin' entry
+mig ..> audit : migration 001\ncreates the table
+
+note bottom of audit
+  Chain order is **seq**, not ts: two requests can
+  land in the same microsecond and timestamptz would
+  not tell them apart. The recursive prev_hash → hash
+  relation is not a declared foreign key — it is
+  verified by walking the history, because an FK would
+  prevent the very deletion we want to detect.
+end note
+
+note bottom of rules
+  The system's current state, not its history. Every
+  mutable table has an immutable trail in audit_log.
+end note
+
+@enduml

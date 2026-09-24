@@ -1,0 +1,64 @@
+@startuml 17-engine-failure-sequence
+!include style.iuml
+
+autonumber "<b>[0]"
+
+actor Client as cli
+participant "Proxy\nopenshield.lua" as proxy
+participant "Engine" as engine
+participant "Backend" as back
+
+cli -> proxy : HTTP request
+activate proxy
+proxy -> proxy : set_timeouts(OS_DECIDE_TIMEOUT_MS)\n150 ms by default
+
+proxy ->x engine : POST /v1/decide
+note right of engine
+  The engine does not answer: down,
+  restarting, or slower than the
+  configured deadline.
+end note
+
+proxy -> proxy : ngx.log(ERR, "engine unreachable")
+
+alt OS_FAIL_MODE = "open"  (default)
+  proxy -> back : forward **unfiltered**
+  activate back
+  back --> proxy : response
+  deactivate back
+  proxy --> cli : 200 — the site stays up
+  note right of proxy
+    A protection layer that takes the protected
+    site down every time its own control plane
+    blinks has inverted its purpose. §8.2 sets
+    availability ≥ 99 % and no filtering
+    requirement overrides it.
+  end note
+else OS_FAIL_MODE = "closed"
+  proxy --> cli : **503** + page with the request_id
+  note right of proxy
+    Chosen where an unfiltered request is
+    worse than an unserved one.
+  end note
+end
+deactivate proxy
+
+== The same criterion inside the engine ==
+
+participant "ratelimit rule" as rl
+queue "Redis" as redis
+
+engine -> rl : Evaluate(ctx, req)
+activate rl
+rl ->x redis : sliding window script
+rl -> rl : count the failure
+rl --> engine : **Allow**
+deactivate rl
+
+note over rl, redis
+  If Redis does not answer, the rule allows and
+  counts the failure, instead of rejecting all
+  traffic because the counter is down.
+end note
+
+@enduml

@@ -1,7 +1,7 @@
 # The gate. Every job here must be green before a pull request can be merged.
 #
 # The levels and what each one defends are set out in
-# docs/estrategia-de-pruebas.md. In short:
+# docs/testing-strategy.md. In short:
 #
 #   lint         formatting, vet, and the linters that find defects
 #   unit         the whole suite under the race detector, no dependencies

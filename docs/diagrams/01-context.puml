@@ -1,0 +1,37 @@
+@startuml 01-context
+!include style.iuml
+
+skinparam linetype ortho
+
+actor "Legitimate client" as client
+actor "Unauthorized\nexternal actor" as attacker #FDECEC
+actor "Security\noperator" as operator
+
+rectangle "System boundary — single VPS" as boundary {
+  component "Reverse proxy\n(OpenResty + Lua)" as proxy
+  component "Rules engine\n(Go)" as engine
+  component "Dashboard API\n(Go + React SPA)" as dash
+  database "PostgreSQL\nforensic log" as pg
+  queue "Redis\nstate + events" as redis
+}
+
+component "Origin application\n(protected backend)" as backend #EDF1F6
+
+client   --> proxy   : HTTP/HTTPS
+attacker --> proxy   : malicious traffic
+proxy    --> engine  : POST /v1/decide
+proxy    --> backend : forwarded only if the\nverdict is "allow"
+engine   --> pg      : chained write
+engine   --> redis   : counters + publish
+dash     --> pg      : history queries
+dash     --> redis   : event subscription
+dash     --> engine  : POST /v1/audit
+operator --> dash    : authenticated HTTPS
+
+note bottom of boundary
+  The backend is never exposed directly to the internet:
+  its port is only reachable from the stack's internal
+  network. This is the condition that enforces RF-01.
+end note
+
+@enduml

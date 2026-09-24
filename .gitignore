@@ -4,6 +4,15 @@ deploy/.env
 *.pem
 *.key
 
+# Private working material (office documents and their lock files) lives
+# outside the repository; this only guards against an accidental `git add .`.
+*.docx
+*.doc
+*.odt
+*.pdf
+.~lock.*#
+~$*
+
 # Go build output
 /bin/
 *.test

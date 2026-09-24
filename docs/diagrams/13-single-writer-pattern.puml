@@ -1,0 +1,59 @@
+@startuml 13-single-writer-pattern
+!include style.iuml
+
+skinparam linetype ortho
+
+package "Request path — N concurrent goroutines" {
+  component "handler /v1/decide #1" as h1
+  component "handler /v1/decide #2" as h2
+  component "handler /v1/decide #N" as hN
+  component "handler /v1/audit\n(dashboard, synchronous)" as ha
+}
+
+queue "buffered channel\nOS_AUDIT_BUFFER = 4096" as buf
+
+package "Writer — exactly one goroutine" {
+  component "Writer.run()\n**head : string**\nonly this goroutine touches it" as run
+}
+
+database "PostgreSQL\naudit_log" as pg
+queue "Redis" as redis
+
+h1 --> buf : Record() — never blocks
+h2 --> buf : Record()
+hN --> buf : Record()
+ha --> buf : RecordSync() — waits for durability
+
+buf --> run : strictly sequential consumption
+run --> pg : 1. NormalizePayload\n2. Seal(head)\n3. INSERT
+pg --> run : ok → head = entry.Hash
+run --> redis : PUBLISH
+
+note right of buf
+  Queue full → the entry is **dropped and counted**.
+  A request is never blocked: turning an audit backlog
+  into an outage of the protected site would invert
+  the system's purpose. The "dropped" counter is
+  visible at /api/v1/status.
+end note
+
+note right of run
+  **The invariant.** Each entry's hash covers the previous
+  one, so appends must happen in strict order. Two
+  goroutines sealing against the same head would produce
+  two branches that no longer verify — a forked chain is
+  indistinguishable from a tampered one.
+  ..
+  This is also why the dashboard does **not** write to the
+  chain: it calls the engine's POST /v1/audit, which ends
+  up in this same writer.
+end note
+
+note bottom of pg
+  If the INSERT fails, head is left untouched: the next
+  entry links to the last one that actually reached the
+  store, and the chain stays continuous instead of
+  pointing at an entry that does not exist.
+end note
+
+@enduml

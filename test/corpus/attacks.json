@@ -7,7 +7,7 @@
     "  - test/load/k6/                          the 'attack' load scenario",
     "",
     "A vector added here is therefore covered in all three at once. See",
-    "docs/estrategia-de-pruebas.md for how to add one.",
+    "docs/testing-strategy.md for how to add one.",
     "",
     "Fields are written exactly as they travel on the wire: 'query' is",
     "percent-encoded the way a client would send it, because that is what both",
@@ -60,7 +60,7 @@
     },
     {
       "id": "sqli_comment_terminator_body",
-      "description": "usuario=admin'--&clave=x in a POST body — the case auth_request could never see (§1 of decisiones-implementacion.md)",
+      "description": "usuario=admin'--&clave=x in a POST body — the case auth_request could never see (§1 of implementation-decisions.md)",
       "rule": "sqli",
       "signature": "comment_terminator",
       "method": "POST",

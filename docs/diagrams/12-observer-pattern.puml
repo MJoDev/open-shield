@@ -1,0 +1,75 @@
+@startuml 12-observer-pattern
+!include style.iuml
+
+skinparam linetype ortho
+
+interface "audit.Publisher" as Pub <<Subject>> {
+  +Publish(ctx, AuditEntry) : error
+}
+
+class "events.Publisher" as RedisPub <<ConcreteSubject>> {
+  -client : *redis.Client
+  -channel : string
+  --
+  +Publish(ctx, entry) : error
+  +Notify(ctx, kind) : error
+}
+
+class "audit.Writer" as Writer {
+  -pub : Publisher
+  --
+  Publishes after persisting. A failure
+  to publish is logged and execution
+  continues: the entry is already durable.
+}
+
+class "Redis Pub/Sub\nopenshield:events" as Channel <<channel>>
+class "Redis Pub/Sub\nopenshield:events:control" as Control <<channel>>
+
+class "ws.Hub" as Hub <<ConcreteObserver>> {
+  -clients : set of clients
+  --
+  +Run(ctx, stream)
+  +Handler() : http.HandlerFunc
+  +Clients() : int
+  -broadcast(entry)
+}
+
+class "WebSocket client" as Browser <<Observer>> {
+  Browser with the "Live" view
+  open. 128-event buffer.
+}
+
+class "engine — SubscribeControl" as EngineSub <<ConcreteObserver>> {
+  Re-reads the rule configuration
+  when the dashboard signals a
+  change; also re-polls every 30 s
+  as a fallback.
+}
+
+Pub <|.. RedisPub
+Writer --> Pub : notifies
+RedisPub --> Channel : PUBLISH
+RedisPub --> Control : PUBLISH
+Channel --> Hub : Subscribe()
+Control --> EngineSub : SubscribeControl()
+Hub --> "0..*" Browser : broadcasts
+
+note right of Writer
+  The engine neither knows nor cares who listens.
+  The dashboard can restart, fall behind or never
+  connect at all, and the engine keeps deciding
+  and recording.
+end note
+
+note bottom of Hub
+  Accepted trade-off: Pub/Sub retains nothing.
+  A disconnected subscriber misses the event, and
+  a client whose buffer is full is skipped rather
+  than waited for — a browser left open on a
+  suspended laptop must not freeze everyone
+  else's view. The durable record is the audit
+  log, not this channel.
+end note
+
+@enduml

@@ -1,5 +1,7 @@
 # Estrategia de pruebas
 
+*[English](testing-strategy.md)*
+
 Este documento describe la batería de pruebas de open-shield: qué niveles hay,
 qué garantiza cada uno, cómo ejecutarlos y cómo bloquean la fusión de un pull
 request.
@@ -395,13 +397,13 @@ rama desechable y abre un PR de prueba: `unit` y `stack` deben ponerse en rojo.
   (`decision_ms` son milisegundos de un dígito, `status` tres dígitos), y
   arreglarlo cambiaría lo que se hashea, invalidando toda cadena ya existente.
   Queda fijado como límite conocido en `TestExtremeMagnitudesAreOutsideTheChainsRange`
-  y anotado en `decisiones-implementacion.md`.
+  y anotado en `implementation-decisions.es.md`.
 
 ---
 
 ## 8. Referencias
 
 - `docs/technical-document.md` §2 (objetivos), §8.2 (requisitos no funcionales)
-- `docs/decisiones-implementacion.md` — dónde y por qué el código se desvía
-- `docs/manual-operacion.md` §5 — rendimiento medido en producción
+- `docs/implementation-decisions.es.md` — dónde y por qué el código se desvía
+- `docs/operations-manual.es.md` §5 — rendimiento medido en producción
 - `test/coverage-floors.txt` — los mínimos, con el razonamiento de cada uno

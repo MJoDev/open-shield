@@ -1,0 +1,63 @@
+@startuml 05-rule-chain-activity
+!include style.iuml
+
+start
+:receive RequestContext;
+
+partition "ipblock — prefix comparison" {
+  if (is the source IP in\nan «allow» prefix?) then (yes)
+    :mark as allowed\nand skip the rest of ipblock; <<#E8F3E8>>
+  else (no)
+    if (is the IP in\na «deny» prefix?) then (yes)
+      :Block — 403; <<#FDECEC>>
+      stop
+    else (no)
+    endif
+  endif
+}
+
+partition "ratelimit — sliding window in Redis" {
+  if (rule enabled?) then (yes)
+    :run atomic Lua script\nZREMRANGEBYSCORE + ZCARD + ZADD;
+    if (did Redis answer?) then (no)
+      :count the failure and **allow**\n(a downed counter does not\ntake traffic down); <<#FFF8E1>>
+    else (yes)
+      if (count ≥ limit?) then (yes)
+        :Block — 429 + Retry-After; <<#FDECEC>>
+        stop
+      else (no)
+      endif
+    endif
+  else (no)
+  endif
+}
+
+partition "sqli — 8 RE2 signatures" {
+  :build the fields to scan\npath, query, body and headers,\neach raw and percent-decoded;
+  if (does any signature match?) then (yes)
+    :Block — 403\nreason = signature + field + 60-char excerpt; <<#FDECEC>>
+    stop
+  else (no)
+  endif
+}
+
+partition "xss — 8 RE2 signatures" {
+  if (does any signature match?) then (yes)
+    :Block — 403; <<#FDECEC>>
+    stop
+  else (no)
+  endif
+}
+
+:Allow; <<#E8F3E8>>
+stop
+
+note right
+  The order is deliberate and of increasing cost:
+  in-memory prefix comparison → one Redis round
+  trip → content scanning. The first "Block" wins,
+  so an already-known client never reaches the
+  expensive checks.
+end note
+
+@enduml

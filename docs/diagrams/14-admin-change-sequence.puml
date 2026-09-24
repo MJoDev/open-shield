@@ -1,0 +1,75 @@
+@startuml 14-admin-change-sequence
+!include style.iuml
+
+autonumber "<b>[0]"
+
+actor "Operator" as op
+participant "React SPA" as spa
+participant "Dashboard API\nPATCH /api/v1/rules/{name}" as api
+participant "AuditClient" as ac
+participant "Engine\nPOST /v1/audit" as engine
+participant "Writer" as w
+database "PostgreSQL" as pg
+participant "rulestore" as rs
+queue "Redis :control" as ctrl
+participant "Engine\n(in-memory chain)" as chain
+
+op -> spa : disables the "xss" rule
+spa -> api : PATCH {enabled: false}\nsession cookie
+activate api
+
+api -> api : Require() checks the HMAC signature\nand extracts the actor from the token
+
+group#Gold #FFF8E1 Record first
+  api -> ac : RecordAdmin(actor, "rule.set_enabled",\n{rule, enabled, ip})
+  activate ac
+  ac -> engine : POST /v1/audit  kind=admin
+  activate engine
+  engine -> w : RecordSync(ctx, ...)
+  activate w
+  w -> pg : INSERT sealed into the chain
+  pg --> w : commit
+  deactivate w
+  engine --> ac : 201 Created
+  deactivate engine
+  ac --> api : nil
+  deactivate ac
+end
+
+alt The entry could not be confirmed
+  api --> spa : **503** — the change is NOT applied
+  note right of api
+    A change to what the proxy blocks that
+    nobody can account for afterwards is worse
+    than a change that never happened. There is
+    no window in which the applied configuration
+    and the record of it disagree.
+  end note
+else Entry is durable
+  group#Green #F2F8F2 Apply afterwards
+    api -> rs : SetEnabled(name, false, actor)
+    activate rs
+    rs -> pg : UPDATE rules
+    pg --> rs : row updated
+    rs --> api : RuleConfig
+    deactivate rs
+    api -> ctrl : Notify("rules")
+    api --> spa : 200 + new state
+  end
+end
+deactivate api
+
+ctrl -> chain : control notification
+activate chain
+chain -> pg : re-read EnabledMap()
+chain -> chain : Engine.SetEnabled(...)
+deactivate chain
+
+note over ctrl, chain
+  The change reaches the engine in under a second.
+  As a fallback, the engine re-polls the configuration
+  every 30 s, so a lost notification delays the
+  change but does not lose it.
+end note
+
+@enduml

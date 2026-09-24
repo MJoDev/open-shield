@@ -196,7 +196,7 @@ cd dashboard/web && npm install && npm run dev   # proxied to localhost:8081
 ## Testing
 
 Six levels, all of them required to merge a pull request. The full strategy is
-in [the testing document](docs/estrategia-de-pruebas.md) *(in Spanish)*.
+in [the testing document](docs/testing-strategy.md).
 
 ```bash
 make test              # unit tests and fuzzing seeds — no dependencies
@@ -234,13 +234,18 @@ rather than a paragraph.
 ## Documentation
 
 - [Technical document](docs/technical-document.md)
-  ([Español](docs/documento-tecnico.md))
-- [Implementation decisions](docs/decisiones-implementacion.md) — where and why
-  the code departs from the technical document *(in Spanish)*
-- [Operations manual](docs/manual-operacion.md) — deployment, tuning and
-  diagnostics *(in Spanish)*
-- [Testing strategy](docs/estrategia-de-pruebas.md) — what each level defends,
-  how to run it, and how CI gates a pull request *(in Spanish)*
+  ([Español](docs/technical-document.es.md))
+- [Implementation decisions](docs/implementation-decisions.md) — where and why
+  the code departs from the technical document
+- [Operations manual](docs/operations-manual.md) — deployment, tuning and
+  diagnostics
+- [Testing strategy](docs/testing-strategy.md) — what each level defends,
+  how to run it, and how CI gates a pull request
+- [Filtering coverage findings](docs/filtering-coverage-findings.md) —
+  measured evasion gaps in the rule chain and what v1.2 has to resolve
+- [Diagrams](docs/diagrams/) — PlantUML sources for the architecture figures
+
+Every document has a Spanish translation beside it, suffixed `.es.md`.
 
 ## License
 

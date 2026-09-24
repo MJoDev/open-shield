@@ -1,0 +1,130 @@
+@startuml 08-domain-model
+!include style.iuml
+
+skinparam linetype ortho
+
+enum Verdict {
+  Allow = "allow"
+  Block = "block"
+}
+
+enum Kind {
+  KindTraffic = "traffic"
+  KindSystem  = "system"
+  KindAdmin   = "admin"
+}
+
+class RequestContext <<value object>> {
+  +RequestID : string
+  +IP : string
+  +Method : string
+  +Path : string
+  +Query : string
+  +Headers : map[string]string
+  +Body : string
+  +BodyTruncated : bool
+  +ReceivedAt : time.Time
+  --
+  +Header(name) : string
+}
+
+class Decision <<value object>> {
+  +Verdict : Verdict
+  +Rule : string
+  +Reason : string
+  +Status : int
+  +DecisionMS : float64
+}
+
+class AuditEntry <<entity>> {
+  +ID : string «UUID»
+  +RequestID : string
+  +Timestamp : time.Time «UTC, µs»
+  +Kind : Kind
+  +Payload : map[string]any
+  +PrevHash : string «hex 64»
+  +Hash : string «hex 64»
+  --
+  +ComputeHash() : string
+  +Seal(prevHash) : string
+}
+
+class IPRule <<entity>> {
+  +CIDR : string
+  +Action : "allow" | "deny"
+  +Note : string
+  +CreatedAt : time.Time
+  +CreatedBy : string
+}
+
+class RuleConfig <<entity>> {
+  +Name : string
+  +Enabled : bool
+  +Config : map[string]any
+  +UpdatedAt : time.Time
+  +UpdatedBy : string
+}
+
+class VerifyResult <<value object>> {
+  +OK : bool
+  +Checked : int64
+  +From, To : string
+  +BrokenAt : string
+  +Position : int64
+  +Timestamp : string
+  +Detail : string
+}
+
+class Stats <<value object>> {
+  +Window : string
+  +Total, Allowed, Blocked : int64
+  +TopIPs : []CountedBy
+  +TopRules : []CountedBy
+  +Series : []Bucket
+}
+
+class Filter <<criteria>> {
+  +Kind, Verdict, IP : string
+  +Rule, RequestID : string
+  +From, To : time.Time
+  +Limit, Offset : int
+  --
+  +Normalized() : Filter
+}
+
+class CountedBy {
+  +Label : string
+  +Count : int64
+}
+
+class Bucket {
+  +Start : time.Time
+  +Allowed : int64
+  +Blocked : int64
+}
+
+RequestContext ..> Decision : evaluated\nproduces >
+Decision "1" --> "1" Verdict
+Decision ..> AuditEntry : recorded in >
+AuditEntry "1" --> "1" Kind
+AuditEntry "0..1" --> "1" AuditEntry : PrevHash\nchains >
+Stats *-- CountedBy
+Stats *-- Bucket
+Filter ..> AuditEntry : selects >
+VerifyResult ..> AuditEntry : points at the\nbroken entry >
+
+note right of AuditEntry
+  RequestID is the correlation thread: the proxy
+  generates it, it travels to the engine, goes into
+  the audit entry and reaches the backend. A single
+  request can be followed across all three layers.
+end note
+
+note bottom of RequestContext
+  The body lives in memory only during evaluation.
+  It is never persisted: a long-retention append-only
+  log is the worst place for the passwords and
+  personal data that travel in a POST.
+end note
+
+@enduml
