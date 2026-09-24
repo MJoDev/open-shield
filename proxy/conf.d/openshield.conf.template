@@ -1,17 +1,23 @@
 # The protected site.
 #
-# ${OS_BACKEND_URL} and ${OS_SERVER_NAME} are substituted at container start
-# from the environment (§5.5). Nothing in this file is edited by hand inside a
-# running container.
+# Every ${OS_…} below is substituted at container start from the environment
+# (§5.5) by docker-entrypoint.sh. Nothing in this file is edited by hand inside
+# a running container.
 
 server {
-    listen 80 default_server;
+    listen ${OS_LISTEN_PORT} default_server;
     server_name ${OS_SERVER_NAME};
 
-    # Docker's embedded DNS. Resolving the backend at request time rather than
-    # at startup means a backend container that restarts with a new address is
-    # picked up without reloading the proxy.
-    resolver 127.0.0.11 ipv6=off valid=10s;
+    # Written by the entrypoint only where an edge in front of the proxy is
+    # trusted to carry the client's address. The glob matches nothing when it
+    # is not, which nginx accepts — an empty include is not an error.
+    include /etc/nginx/realip/*.conf;
+
+    # Resolving the backend at request time rather than at startup means a
+    # backend container that restarts with a new address is picked up without
+    # reloading the proxy. The resolver itself comes from the container's
+    # /etc/resolv.conf: Docker's embedded DNS here, the platform's elsewhere.
+    resolver ${OS_RESOLVER} ipv6=${OS_RESOLVER_IPV6} valid=10s;
     set $backend_url "${OS_BACKEND_URL}";
 
     # The proxy's own liveness check. It is answered before the access phase, so
@@ -35,7 +41,7 @@ server {
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $os_forwarded_proto;
         proxy_set_header X-Request-ID      $request_id;
 
         # WebSocket and SSE passthrough, so a protected application that uses

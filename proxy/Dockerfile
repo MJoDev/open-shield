@@ -43,7 +43,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 EXPOSE 80 443
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
-    CMD curl -fsS http://127.0.0.1/__openshield/health || exit 1
+    CMD curl -fsS "http://127.0.0.1:${OS_LISTEN_PORT:-${PORT:-80}}/__openshield/health" || exit 1
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]

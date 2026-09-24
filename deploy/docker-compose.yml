@@ -24,7 +24,7 @@ services:
     image: open-shield-proxy:${OS_VERSION:-dev}
     restart: unless-stopped
     ports:
-      - "${OS_HTTP_PORT:-80}:80"
+      - "${OS_HTTP_PORT:-80}:${OS_LISTEN_PORT:-80}"
     environment:
       OS_BACKEND_URL: ${OS_BACKEND_URL}
       OS_SERVER_NAME: ${OS_SERVER_NAME:-_}
@@ -32,6 +32,13 @@ services:
       OS_DECIDE_TIMEOUT_MS: ${OS_DECIDE_TIMEOUT_MS:-150}
       OS_MAX_BODY_INSPECT_BYTES: ${OS_MAX_BODY_INSPECT_BYTES:-8192}
       OS_FAIL_MODE: ${OS_FAIL_MODE:-open}
+      OS_LISTEN_PORT: ${OS_LISTEN_PORT:-80}
+      # Empty means "read the nameserver from /etc/resolv.conf", which is
+      # Docker's embedded DNS here.
+      OS_RESOLVER: ${OS_RESOLVER:-}
+      OS_RESOLVER_IPV6: ${OS_RESOLVER_IPV6:-off}
+      OS_TRUSTED_PROXY: ${OS_TRUSTED_PROXY:-}
+      OS_REAL_IP_HEADER: ${OS_REAL_IP_HEADER:-X-Forwarded-For}
     depends_on:
       engine:
         condition: service_healthy
