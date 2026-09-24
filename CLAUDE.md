@@ -320,6 +320,11 @@ reach the engine in under a second over the Redis control channel, with a
 - `docs/technical-document.md` — the design (`.es.md` for Spanish)
 - `docs/implementation-decisions.md` — where and why the code departs from it
 - `docs/operations-manual.md` — deployment, tuning, diagnostics, latency numbers
+- `docs/deploy-railway.md` — running behind a managed edge, worked through on
+  Railway. The four settings that topology needs (`OS_LISTEN_PORT`,
+  `OS_RESOLVER*`, `OS_TRUSTED_PROXY`, `OS_REAL_IP_HEADER`) are generic; without
+  the last two, `ipblock` and `ratelimit` key every request to the edge's own
+  address and silently protect nothing.
 - `docs/filtering-coverage-findings.md` — measured evasion gaps in the rule
   chain and what the v1.2 technical document has to resolve. Read it before
   touching `patterns.json` or `scanTargets`: the open findings are normalization
