@@ -135,6 +135,8 @@ func run() error {
 		SPA:       web.FS(),
 		Logger:    log,
 		Version:   version,
+
+		TrustedProxies: cfg.TrustedProxies,
 	})
 
 	server := &http.Server{

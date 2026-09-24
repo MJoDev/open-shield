@@ -794,20 +794,28 @@ func TestAMissingSPABuildIsReported(t *testing.T) {
 
 // --- Helpers -----------------------------------------------------------------
 
-func TestClientIPPrefersTheForwardedAddress(t *testing.T) {
-	// The dashboard sits behind the same proxy the system installs, so
-	// RemoteAddr is the proxy. Getting this wrong would throttle every operator
-	// as if they shared one address, and would record the proxy as the actor of
-	// every administrative change.
+// The dashboard sits behind the same proxy the system installs, so RemoteAddr
+// is the proxy and the forwarded header is what names the operator. Getting it
+// wrong in one direction throttles every operator as if they shared an address
+// and records the proxy as the actor of every administrative change; getting it
+// wrong in the other lets any client name itself.
+//
+// Both directions are covered in clientip_test.go, against a configured list of
+// trusted networks. Reading the header from an unconfigured deployment — which
+// is what this test used to assert — is the behaviour that was removed.
+func TestClientIPUsesTheProxyAddressOnlyWhenItIsTrusted(t *testing.T) {
+	trusted := trustedProxies(mustPrefixes(t, "10.0.0.0/8"))
+
 	for name, c := range map[string]struct {
 		remote    string
 		forwarded string
 		want      string
 	}{
-		"no forwarded header": {remote: "203.0.113.7:54321", want: "203.0.113.7"},
-		"single hop":          {remote: "10.0.0.1:443", forwarded: "203.0.113.7", want: "203.0.113.7"},
-		"chain of proxies":    {remote: "10.0.0.1:443", forwarded: "203.0.113.7, 10.0.0.5", want: "203.0.113.7"},
-		"padded":              {remote: "10.0.0.1:443", forwarded: "  203.0.113.7 , 10.0.0.5", want: "203.0.113.7"},
+		"no forwarded header":  {remote: "203.0.113.7:54321", want: "203.0.113.7"},
+		"single hop":           {remote: "10.0.0.1:443", forwarded: "203.0.113.7", want: "203.0.113.7"},
+		"chain of proxies":     {remote: "10.0.0.1:443", forwarded: "203.0.113.7, 10.0.0.5", want: "203.0.113.7"},
+		"padded":               {remote: "10.0.0.1:443", forwarded: "  203.0.113.7 , 10.0.0.5", want: "203.0.113.7"},
+		"untrusted peer lying": {remote: "198.51.100.7:443", forwarded: "203.0.113.7", want: "198.51.100.7"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -815,7 +823,7 @@ func TestClientIPPrefersTheForwardedAddress(t *testing.T) {
 			if c.forwarded != "" {
 				req.Header.Set("X-Forwarded-For", c.forwarded)
 			}
-			if got := clientIP(req); got != c.want {
+			if got := trusted.clientIP(req); got != c.want {
 				t.Fatalf("clientIP = %q, want %q", got, c.want)
 			}
 		})

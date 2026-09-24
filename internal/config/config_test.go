@@ -35,7 +35,7 @@ func setEnv(t *testing.T, vars map[string]string) {
 		"OS_RATELIMIT_REQUESTS", "OS_RATELIMIT_WINDOW_S",
 		"OS_MAX_BODY_INSPECT_BYTES", "OS_LOG_LEVEL",
 		"OS_ADMIN_USER", "OS_ADMIN_PASSWORD_HASH", "OS_SESSION_SECRET",
-		"OS_SESSION_TTL_S", "OS_SECURE_COOKIES",
+		"OS_SESSION_TTL_S", "OS_SECURE_COOKIES", "OS_TRUSTED_PROXY",
 	}
 	for _, key := range known {
 		t.Setenv(key, "")
@@ -321,5 +321,63 @@ func TestBothServicesReadTheSameSharedSettings(t *testing.T) {
 	}
 	if engine.EventsChannel != dashboard.EventsChannel {
 		t.Errorf("EventsChannel differs: %q vs %q", engine.EventsChannel, dashboard.EventsChannel)
+	}
+}
+
+// OS_TRUSTED_PROXY decides whose X-Forwarded-For the dashboard believes. A
+// typo that silently dropped an entry would leave the sign-in throttle keyed on
+// an address the client chooses, so a malformed block has to stop startup.
+func TestLoadDashboardRejectsAMalformedTrustedProxy(t *testing.T) {
+	setEnv(t, map[string]string{
+		"OS_POSTGRES_DSN":        validDSN,
+		"OS_ADMIN_PASSWORD_HASH": validHash,
+		"OS_SESSION_SECRET":      validSecret,
+		"OS_TRUSTED_PROXY":       "100.64.0.0/10, no-es-un-cidr",
+	})
+
+	if _, err := LoadDashboard(); err == nil {
+		t.Fatal("LoadDashboard accepted a malformed CIDR; it must refuse to start")
+	} else if !strings.Contains(err.Error(), "OS_TRUSTED_PROXY") {
+		t.Fatalf("error = %v, want it to name OS_TRUSTED_PROXY", err)
+	}
+}
+
+func TestLoadDashboardParsesTrustedProxies(t *testing.T) {
+	setEnv(t, map[string]string{
+		"OS_POSTGRES_DSN":        validDSN,
+		"OS_ADMIN_PASSWORD_HASH": validHash,
+		"OS_SESSION_SECRET":      validSecret,
+		// Commas and whitespace both separate; host bits are masked off so a
+		// range written as 100.64.0.7/10 still matches what it means.
+		"OS_TRUSTED_PROXY": "100.64.0.7/10 fd00::1/8",
+	})
+
+	cfg, err := LoadDashboard()
+	if err != nil {
+		t.Fatalf("LoadDashboard: %v", err)
+	}
+	if len(cfg.TrustedProxies) != 2 {
+		t.Fatalf("TrustedProxies = %v, want 2 entries", cfg.TrustedProxies)
+	}
+	if got := cfg.TrustedProxies[0].String(); got != "100.64.0.0/10" {
+		t.Errorf("first prefix = %s, want the masked 100.64.0.0/10", got)
+	}
+}
+
+// The default has to be "believe nobody": a deployment that never sets this is
+// reachable directly, where any header at all is the client's own.
+func TestLoadDashboardTrustsNoProxyByDefault(t *testing.T) {
+	setEnv(t, map[string]string{
+		"OS_POSTGRES_DSN":        validDSN,
+		"OS_ADMIN_PASSWORD_HASH": validHash,
+		"OS_SESSION_SECRET":      validSecret,
+	})
+
+	cfg, err := LoadDashboard()
+	if err != nil {
+		t.Fatalf("LoadDashboard: %v", err)
+	}
+	if len(cfg.TrustedProxies) != 0 {
+		t.Fatalf("TrustedProxies = %v, want none by default", cfg.TrustedProxies)
 	}
 }

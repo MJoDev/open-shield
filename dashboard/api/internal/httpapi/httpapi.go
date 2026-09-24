@@ -7,10 +7,9 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
-	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/open-shield/open-shield/dashboard/api/internal/auth"
@@ -33,7 +32,8 @@ type Server struct {
 	log       *slog.Logger
 	version   string
 
-	logins *loginLimiter
+	logins  *loginLimiter
+	trusted trustedProxies
 }
 
 // Options configures the dashboard server.
@@ -48,6 +48,10 @@ type Options struct {
 	SPA     fs.FS
 	Logger  *slog.Logger
 	Version string
+	// TrustedProxies are the networks whose X-Forwarded-For is believed.
+	// Empty — the default — means the peer address is used and the header is
+	// ignored, which is what keeps the sign-in throttle countable.
+	TrustedProxies []netip.Prefix
 }
 
 // New returns a dashboard server.
@@ -66,6 +70,7 @@ func New(opts Options) *Server {
 		log:       opts.Logger,
 		version:   opts.Version,
 		logins:    newLoginLimiter(10, 15*time.Minute),
+		trusted:   trustedProxies(opts.TrustedProxies),
 	}
 }
 
@@ -117,7 +122,7 @@ type loginRequest struct {
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Without this, a single administrator account with no lockout is an open
 	// invitation to an offline-speed online guessing attack.
-	if !s.logins.allow(clientIP(r)) {
+	if !s.logins.allow(s.trusted.clientIP(r)) {
 		writeJSON(w, http.StatusTooManyRequests, apiError{
 			Error: "too many failed sign-in attempts; try again later"})
 		return
@@ -131,13 +136,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	token, err := s.sessions.Login(req.User, req.Password)
 	if err != nil {
-		s.logins.fail(clientIP(r))
-		s.log.Warn("failed sign-in", "user", req.User, "ip", clientIP(r))
+		s.logins.fail(s.trusted.clientIP(r))
+		s.log.Warn("failed sign-in", "user", req.User, "ip", s.trusted.clientIP(r))
 		writeJSON(w, http.StatusUnauthorized, apiError{Error: "invalid credentials"})
 		return
 	}
 
-	s.logins.reset(clientIP(r))
+	s.logins.reset(s.trusted.clientIP(r))
 	s.sessions.SetCookie(w, token)
 
 	// A sign-in is administrative access, which §6.1 puts on the record. It is
@@ -145,7 +150,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// would lock an operator out of the tool they need in order to find out
 	// why the engine is unreachable.
 	if err := s.auditor.RecordAdmin(r.Context(), req.User, "login", map[string]any{
-		"ip": clientIP(r),
+		"ip": s.trusted.clientIP(r),
 	}); err != nil {
 		s.log.Warn("could not record the sign-in", "error", err)
 	}
@@ -310,7 +315,7 @@ func (s *Server) handlePatchRule(w http.ResponseWriter, r *http.Request) {
 	if err := s.auditor.RecordAdmin(r.Context(), actor, "rule.set_enabled", map[string]any{
 		"rule":    name,
 		"enabled": *req.Enabled,
-		"ip":      clientIP(r),
+		"ip":      s.trusted.clientIP(r),
 	}); err != nil {
 		s.refuseUnaudited(w, err)
 		return
@@ -369,7 +374,7 @@ func (s *Server) handleAddIPRule(w http.ResponseWriter, r *http.Request) {
 		"cidr":   req.CIDR,
 		"target": req.Action,
 		"note":   req.Note,
-		"ip":     clientIP(r),
+		"ip":     s.trusted.clientIP(r),
 	}); err != nil {
 		s.refuseUnaudited(w, err)
 		return
@@ -398,7 +403,7 @@ func (s *Server) handleDeleteIPRule(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.auditor.RecordAdmin(r.Context(), actor, "ipblock.delete", map[string]any{
 		"cidr": prefix,
-		"ip":   clientIP(r),
+		"ip":   s.trusted.clientIP(r),
 	}); err != nil {
 		s.refuseUnaudited(w, err)
 		return
@@ -536,22 +541,6 @@ func parseTime(raw string) (time.Time, error) {
 		return time.Time{}, errors.New("must be an RFC3339 timestamp, e.g. 2026-08-25T12:00:00Z")
 	}
 	return t.UTC(), nil
-}
-
-// clientIP is used for sign-in rate limiting and for the audit record of who
-// made a change.
-func clientIP(r *http.Request) string {
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		if first, _, found := strings.Cut(forwarded, ","); found {
-			return strings.TrimSpace(first)
-		}
-		return strings.TrimSpace(forwarded)
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 // nonNil turns a nil slice into an empty one so the JSON is [] rather than

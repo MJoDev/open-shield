@@ -3,6 +3,7 @@ package httpapi
 import (
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/netip"
 	"path"
@@ -86,6 +87,77 @@ func (l *loginLimiter) sweep() {
 			delete(l.attempts, ip)
 		}
 	}
+}
+
+// --- Client address resolution -----------------------------------------------
+
+// trustedProxies decides whose X-Forwarded-For may be believed.
+//
+// The header is a list any client can prepend to, so taking its first entry
+// trusts whoever sent the request. That address is what the sign-in throttle
+// counts against and what the audit entry records as the author of an
+// administrative change, which makes believing it worth two things to an
+// attacker: an unlimited password oracle, and a forged provenance sealed into
+// the hash chain as though it were evidence.
+//
+// Empty means believe nobody — correct whenever clients reach the dashboard
+// directly, and the default for that reason. Behind an edge that rewrites the
+// header, list the edge's networks. See OS_TRUSTED_PROXY in
+// deploy/.env.example.
+type trustedProxies []netip.Prefix
+
+func (t trustedProxies) contains(addr netip.Addr) bool {
+	for _, prefix := range t {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// clientIP returns the address to attribute a request to.
+//
+// The forwarded list is walked from the right — the end an edge appends to —
+// and the first address outside the trusted set wins. Anything further left was
+// supplied by a party that was already untrusted at that point, so it is never
+// reached. A malformed entry ends the walk rather than being stepped over:
+// past it there is nothing but attacker-controlled text.
+func (t trustedProxies) clientIP(r *http.Request) string {
+	peer := peerAddr(r)
+	if len(t) == 0 {
+		return peer
+	}
+
+	addr, err := netip.ParseAddr(peer)
+	if err != nil || !t.contains(addr) {
+		return peer
+	}
+
+	forwarded := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	for i := len(forwarded) - 1; i >= 0; i-- {
+		candidate := strings.TrimSpace(forwarded[i])
+		if candidate == "" {
+			continue
+		}
+		parsed, err := netip.ParseAddr(candidate)
+		if err != nil {
+			return peer
+		}
+		if !t.contains(parsed) {
+			return parsed.String()
+		}
+	}
+	return peer
+}
+
+// peerAddr is the address that actually opened the connection — the only one
+// no client can choose.
+func peerAddr(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // --- CIDR --------------------------------------------------------------------

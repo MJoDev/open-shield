@@ -7,6 +7,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -50,6 +51,11 @@ type Dashboard struct {
 	SessionSecret     string
 	SessionTTL        time.Duration
 	SecureCookies     bool
+
+	// TrustedProxies are the networks whose X-Forwarded-For the dashboard
+	// believes when deciding which address a request came from. Empty means
+	// none: the peer address is used and the header ignored.
+	TrustedProxies []netip.Prefix
 
 	LogLevel string
 }
@@ -99,6 +105,7 @@ func LoadDashboard() (Dashboard, error) {
 		SessionSecret:     required("OS_SESSION_SECRET", &errs),
 		SessionTTL:        seconds("OS_SESSION_TTL_S", 8*3600, &errs),
 		SecureCookies:     boolean("OS_SECURE_COOKIES", false, &errs),
+		TrustedProxies:    prefixes("OS_TRUSTED_PROXY", &errs),
 		LogLevel:          str("OS_LOG_LEVEL", "info"),
 	}
 
@@ -114,6 +121,31 @@ func LoadDashboard() (Dashboard, error) {
 	}
 
 	return cfg, errors.Join(errs...)
+}
+
+// prefixes parses a list of CIDR blocks separated by commas or whitespace.
+//
+// A malformed entry fails at startup rather than being skipped. This list
+// decides whose X-Forwarded-For is believed, so quietly dropping an
+// unparseable network would leave a security control that reads as configured
+// and enforces something else.
+func prefixes(key string, errs *[]error) []netip.Prefix {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+
+	fields := strings.Fields(strings.ReplaceAll(raw, ",", " "))
+	out := make([]netip.Prefix, 0, len(fields))
+	for _, field := range fields {
+		prefix, err := netip.ParsePrefix(field)
+		if err != nil {
+			*errs = append(*errs, fmt.Errorf("%s: %q is not a CIDR block", key, field))
+			continue
+		}
+		out = append(out, prefix.Masked())
+	}
+	return out
 }
 
 func str(key, fallback string) string {
