@@ -4,6 +4,14 @@
  * so the light and dark values swap in one place. The two series colours —
  * blue for allowed, red for blocked — were validated for colourblind
  * separation against both surfaces; see the note in TrafficChart.tsx.
+ *
+ * Marks and text do not share a colour. The series colours are tuned for bars
+ * and swatches, where 3:1 is the bar; small text needs 4.5:1, which neither
+ * series colour reaches on every surface. The *-text roles are the same hues
+ * pushed far enough to be read.
+ *
+ * Spacing is a 4px scale (--space-*). Every gap, padding and margin lands on
+ * it, and space inside a group is always smaller than space between groups.
  */
 
 :root {
@@ -17,7 +25,7 @@
 
   --text: #0b0b0b;
   --text-secondary: #52514e;
-  --muted: #898781;
+  --muted: #6f6d68;
 
   --gridline: #e1e0d9;
   --baseline: #c3c2b7;
@@ -26,9 +34,32 @@
   --blocked: #d03b3b;
   --allowed-soft: rgba(42, 120, 214, 0.12);
   --blocked-soft: rgba(208, 59, 59, 0.12);
+  --allowed-text: #1f65bb;
+  --blocked-text: #b72f2f;
 
   --accent: #2a78d6;
+  --accent-text: #1f65bb;
+  --accent-strong: #1f65bb;
+  --on-accent: #ffffff;
   --good: #0ca30c;
+
+  --shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  --skeleton-shine: rgba(255, 255, 255, 0.6);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+
+  --target: 2rem;
+
+  --ease-out: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --fast: 120ms;
+  --enter: 200ms;
 
   --radius: 10px;
   --font: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -47,7 +78,7 @@
 
     --text: #ffffff;
     --text-secondary: #c3c2b7;
-    --muted: #898781;
+    --muted: #97958f;
 
     --gridline: #2c2c2a;
     --baseline: #383835;
@@ -56,13 +87,34 @@
     --blocked: #d03b3b;
     --allowed-soft: rgba(57, 135, 229, 0.16);
     --blocked-soft: rgba(208, 59, 59, 0.16);
+    --allowed-text: #6cabf5;
+    --blocked-text: #f07575;
 
     --accent: #3987e5;
+    --accent-text: #6cabf5;
+    --accent-strong: #2a6fc4;
+    --on-accent: #ffffff;
+    --good: #0ca30c;
+
+    --shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    --skeleton-shine: rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* A touch screen gets a larger minimum target. */
+@media (pointer: coarse) {
+  :root {
+    --target: 2.5rem;
   }
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* The scrollbar appearing when data arrives must not shift the page sideways. */
+html {
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -85,6 +137,10 @@ h2 {
 h3 {
   font-size: 0.95rem;
   letter-spacing: 0.01em;
+}
+
+p {
+  margin: 0;
 }
 
 .sr-only {
@@ -122,7 +178,19 @@ h3 {
   min-height: 100vh;
   display: grid;
   place-items: center;
+  padding: var(--space-4);
   color: var(--muted);
+}
+
+.boot-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+.boot-mark .shield {
+  width: 2.5rem;
+  height: 2.5rem;
 }
 
 .app {
@@ -132,8 +200,8 @@ h3 {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  padding: 0.75rem 1.5rem;
+  gap: var(--space-6);
+  padding: var(--space-3) var(--space-6);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   position: sticky;
@@ -145,7 +213,7 @@ h3 {
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   font-weight: 650;
   letter-spacing: -0.01em;
 }
@@ -161,7 +229,7 @@ h3 {
 
 .tabs {
   display: flex;
-  gap: 0.25rem;
+  gap: var(--space-1);
   margin-right: auto;
   flex-wrap: wrap;
 }
@@ -171,56 +239,69 @@ h3 {
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
-  padding: 0.35rem 0.75rem;
+  font-weight: 500;
+  min-height: var(--target);
+  padding: var(--space-1) var(--space-3);
   border-radius: 6px;
   cursor: pointer;
+  transition:
+    background-color var(--fast) ease-out,
+    color var(--fast) ease-out;
 }
 .tab:hover {
   background: var(--surface-2);
   color: var(--text);
 }
-.tab-active {
+.tab-active,
+.tab-active:hover {
   background: var(--allowed-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
 .session {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   font-size: 0.9rem;
 }
 
 main {
   max-width: 78rem;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: var(--space-6);
 }
 
 .view {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: var(--space-5);
 }
 
 .view-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.view-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
 .controls {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .note {
-  margin: 0;
-  padding: 0.75rem 1rem;
+  padding: var(--space-3) var(--space-4);
   background: var(--allowed-soft);
   border-left: 3px solid var(--accent);
   border-radius: 0 6px 6px 0;
@@ -228,37 +309,157 @@ main {
   color: var(--text-secondary);
 }
 
+/* Human sentence first, technical detail after, and a way out when one exists. */
 .error-banner {
-  margin: 0;
-  padding: 0.75rem 1rem;
+  padding: var(--space-3) var(--space-4);
   background: var(--blocked-soft);
   border-left: 3px solid var(--blocked);
   border-radius: 0 6px 6px 0;
   font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  animation: enter var(--enter) var(--ease-out);
+}
+.error-banner .error-detail {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  word-break: break-word;
+}
+.error-banner .link-button {
+  align-self: flex-start;
+}
+
+.status-line {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  min-height: 1.3em;
 }
 
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1.1rem 1.25rem;
+  padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: var(--space-3);
   min-width: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .two-column {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+  gap: var(--space-5);
 }
 
 .counter {
-  margin-left: 0.5rem;
+  margin-left: var(--space-2);
   font-weight: 400;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* --- Loading: refresh, skeletons, spinner ----------------------------------
+ *
+ * A refresh keeps the last data on screen, dimmed, so the layout never jumps
+ * and the operator keeps reading while the next page arrives. A first load has
+ * nothing to keep, so it reserves the final shape with skeleton blocks.
+ */
+
+.refreshable {
+  transition: opacity var(--enter) ease-out;
+}
+.is-refreshing {
+  opacity: 0.6;
+}
+
+.skeleton {
+  display: block;
+  background: var(--surface-2);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+  height: 0.9em;
+  animation: enter var(--enter) var(--ease-out);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-inline {
+  display: inline-block;
+  width: 6rem;
+  vertical-align: middle;
+}
+.skeleton-value {
+  height: 1.85rem;
+  width: 60%;
+  margin: var(--space-1) 0;
+}
+.chart-head-pending {
+  min-height: var(--target);
+}
+.skeleton-chart {
+  height: auto;
+  aspect-ratio: 800 / 220;
+  width: 100%;
+}
+
+/* Below the indicator delay the placeholder holds the space but shows nothing,
+ * so a fast response never flashes a skeleton. */
+.is-pending .skeleton {
+  visibility: hidden;
+}
+
+.spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -0.1em;
+  flex-shrink: 0;
+}
+
+.inline-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  animation: enter var(--enter) var(--ease-out);
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
 }
 
 /* --- Stat tiles ----------------------------------------------------------- */
@@ -266,17 +467,17 @@ main {
 .tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .tile {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.9rem 1.1rem;
+  padding: var(--space-3) var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: var(--space-1);
 }
 .tile-label {
   font-size: 0.82rem;
@@ -286,6 +487,8 @@ main {
   font-size: 1.85rem;
   font-weight: 600;
   letter-spacing: -0.02em;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
 }
 .tile-allow .tile-value {
   color: var(--allowed);
@@ -300,14 +503,14 @@ main {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .chart-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
@@ -324,7 +527,7 @@ main {
 }
 
 .chart-empty {
-  padding: 2.5rem 0;
+  padding: var(--space-10) 0;
   text-align: center;
   color: var(--muted);
   font-size: 0.9rem;
@@ -332,14 +535,14 @@ main {
 
 .legend {
   display: flex;
-  gap: 1rem;
+  gap: var(--space-4);
   font-size: 0.85rem;
   color: var(--text-secondary);
 }
 .legend-item {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }
 .swatch {
   width: 0.7rem;
@@ -392,19 +595,19 @@ main {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
-  padding: 0.5rem 0.7rem;
+  padding: var(--space-2) var(--space-3);
   font-size: 0.82rem;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: var(--space-1);
   pointer-events: none;
   white-space: nowrap;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow);
 }
 .chart-tooltip span {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-2);
   color: var(--text-secondary);
 }
 .chart-tooltip b {
@@ -426,14 +629,15 @@ main {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }
 .rank-list li {
   display: grid;
   grid-template-columns: minmax(6rem, 12rem) 1fr auto;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   font-size: 0.85rem;
+  min-height: 1.4rem;
 }
 .rank-label {
   overflow: hidden;
@@ -455,8 +659,25 @@ main {
 .rank-count {
   color: var(--text-secondary);
 }
+.rank-fill-pending {
+  background: var(--border-strong);
+}
+.is-pending .rank-fill-pending {
+  visibility: hidden;
+}
 
 /* --- Tables --------------------------------------------------------------- */
+
+/* A wide table scrolls inside its panel; the page itself never scrolls
+ * sideways. */
+.table-scroll {
+  /* Positioned so absolutely placed children (.sr-only header text) are
+   * clipped by the scroller instead of widening the page. */
+  position: relative;
+  overflow-x: auto;
+  margin: 0 calc(-1 * var(--space-2));
+  padding: 0 var(--space-2);
+}
 
 .data-table {
   width: 100%;
@@ -470,20 +691,31 @@ main {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  padding: 0.4rem 0.6rem;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border-strong);
   white-space: nowrap;
 }
 .data-table td {
-  padding: 0.45rem 0.6rem;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
   vertical-align: top;
 }
+.data-table td.cell-action {
+  text-align: right;
+  white-space: nowrap;
+  vertical-align: middle;
+}
 .row-clickable {
   cursor: pointer;
+  transition: background-color var(--fast) ease-out;
 }
-.row-clickable:hover {
+.row-clickable:hover,
+.row-expanded {
   background: var(--surface-2);
+}
+.row-clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .truncate {
   max-width: 22rem;
@@ -493,12 +725,21 @@ main {
 }
 .row-detail td {
   background: var(--surface-2);
+  padding: var(--space-3) var(--space-3) var(--space-4);
+}
+.skeleton-row td {
+  vertical-align: middle;
+}
+/* Pads the block out to one line of body text, so a skeleton row is exactly
+ * as tall as the real row that replaces it. */
+.skeleton-row .skeleton {
+  margin: calc((1.55em - 0.9em) / 2) 0;
 }
 
 .detail-grid {
   display: grid;
   grid-template-columns: minmax(8rem, auto) 1fr;
-  gap: 0.3rem 1rem;
+  gap: var(--space-2) var(--space-4);
   margin: 0;
   font-size: 0.85rem;
 }
@@ -509,6 +750,12 @@ main {
   margin: 0;
   min-width: 0;
 }
+.copyable {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
 
 .payload {
   margin: 0;
@@ -517,7 +764,7 @@ main {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 0.6rem 0.75rem;
+  padding: var(--space-2) var(--space-3);
   overflow-x: auto;
   max-height: 20rem;
 }
@@ -527,25 +774,25 @@ main {
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.1rem 0.45rem;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
   border-radius: 4px;
   font-size: 0.75rem;
   font-weight: 600;
+  line-height: 1.6;
   white-space: nowrap;
 }
 .badge-allow {
   background: var(--allowed-soft);
-  color: var(--allowed);
+  color: var(--allowed-text);
 }
 .badge-block {
   background: var(--blocked-soft);
-  color: var(--blocked);
+  color: var(--blocked-text);
 }
 .badge-rule {
   font-family: var(--mono);
   font-weight: 400;
-  opacity: 0.85;
 }
 .badge-kind {
   background: var(--surface-2);
@@ -566,8 +813,8 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.7rem 0;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--border);
 }
 .rule-list li:last-child {
@@ -576,9 +823,21 @@ main {
 .rule-info {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: var(--space-1);
   font-size: 0.85rem;
   min-width: 0;
+  flex: 1;
+}
+/* Line-height boxes for the two text lines, and the toggle's own size, so the
+ * skeleton row is as tall as the rule row it stands in for. */
+.rule-pending .rule-info .skeleton {
+  display: block;
+  margin: calc((1.55em - 0.9em) / 2) 0;
+}
+.skeleton-toggle {
+  height: var(--target);
+  width: 7.5rem;
+  border-radius: 999px;
 }
 .rule-name {
   font-weight: 600;
@@ -586,50 +845,82 @@ main {
   color: var(--text);
 }
 
+/* The width is fixed so "Guardando…" does not shift the row it sits in. */
 .toggle {
   border: 1px solid var(--border-strong);
   background: var(--surface-2);
-  color: var(--muted);
+  color: var(--text-secondary);
   font: inherit;
   font-size: 0.8rem;
   font-weight: 600;
-  padding: 0.25rem 0.75rem;
+  min-height: var(--target);
+  min-width: 7.5rem;
+  padding: var(--space-1) var(--space-3);
   border-radius: 999px;
   cursor: pointer;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  transition:
+    background-color var(--fast) ease-out,
+    border-color var(--fast) ease-out,
+    color var(--fast) ease-out;
+}
+.toggle:hover:not(:disabled) {
+  border-color: var(--baseline);
 }
 .toggle-on {
   background: var(--allowed-soft);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-text);
+}
+.toggle-on:hover:not(:disabled) {
+  border-color: var(--accent);
 }
 
 /* --- Forms & buttons ------------------------------------------------------ */
 
 .filters {
   display: flex;
-  gap: 0.75rem;
+  gap: var(--space-4);
   align-items: flex-end;
   flex-wrap: wrap;
 }
 .filters label {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: var(--space-1);
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--text-secondary);
+}
+
+.field-error {
+  font-size: 0.82rem;
+  color: var(--blocked-text);
 }
 
 input,
 select {
   font: inherit;
   font-size: 0.88rem;
-  padding: 0.35rem 0.55rem;
+  min-height: var(--target);
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--surface);
   color: var(--text);
   min-width: 9rem;
+  max-width: 100%;
+  transition: border-color var(--fast) ease-out;
+}
+input:hover,
+select:hover {
+  border-color: var(--baseline);
+}
+input[aria-invalid="true"] {
+  border-color: var(--blocked);
 }
 input:focus-visible,
 select:focus-visible,
@@ -641,42 +932,73 @@ button:focus-visible {
 button {
   font: inherit;
   font-size: 0.88rem;
-  padding: 0.4rem 0.9rem;
+  min-height: var(--target);
+  padding: var(--space-1) var(--space-4);
   border-radius: 6px;
   border: 1px solid transparent;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-strong);
+  color: var(--on-accent);
   font-weight: 600;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  transition:
+    background-color var(--fast) ease-out,
+    filter var(--fast) ease-out;
+}
+button:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+button[aria-busy="true"]:disabled {
+  opacity: 0.8;
+  cursor: progress;
 }
 button.secondary {
   background: var(--surface-2);
   color: var(--text-secondary);
   border-color: var(--border-strong);
 }
+button.secondary:hover:not(:disabled) {
+  filter: none;
+  color: var(--text);
+  border-color: var(--baseline);
+}
+/* Busy labels ("Verificando…", "Actualizando…") must not resize the button. */
+.button-fixed {
+  min-width: 10rem;
+}
+
 .link-button {
   background: none;
   border: 0;
-  color: var(--accent);
-  padding: 0;
+  color: var(--accent-text);
+  min-height: var(--target);
+  padding: 0 var(--space-1);
+  margin: 0 calc(-1 * var(--space-1));
   font-weight: 500;
   font-size: 0.85rem;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+.link-button:hover:not(:disabled) {
+  filter: none;
+  text-decoration-thickness: 2px;
+}
 .link-button.danger {
-  color: var(--blocked);
+  color: var(--blocked-text);
 }
 
 .pager {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
+  gap: var(--space-4);
   font-size: 0.85rem;
 }
 
@@ -685,12 +1007,13 @@ button.secondary {
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-2);
   font-size: 0.8rem;
   color: var(--text-secondary);
   background: var(--surface-2);
   border-radius: 999px;
-  padding: 0.15rem 0.6rem;
+  padding: 0 var(--space-3);
+  min-height: 1.6rem;
 }
 .pill-dot {
   width: 0.45rem;
@@ -703,9 +1026,16 @@ button.secondary {
 }
 .pill-connecting .pill-dot {
   background: var(--muted);
+  animation: pulse 1.2s ease-in-out infinite;
 }
 .pill-closed .pill-dot {
   background: var(--blocked);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* --- Login ---------------------------------------------------------------- */
@@ -714,30 +1044,34 @@ button.secondary {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 2rem;
-  width: min(22rem, calc(100vw - 3rem));
+  padding: var(--space-8);
+  width: min(22rem, 100%);
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: var(--space-4);
   text-align: center;
 }
 .login-card label {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-1);
   text-align: left;
   font-size: 0.82rem;
-  color: var(--muted);
+  color: var(--text-secondary);
 }
-.login-card p {
-  margin: 0;
-}
-.login-card .error-banner {
+.login-card .error-banner,
+.login-card .note {
   text-align: left;
+}
+.login-card .brand + p {
+  margin-top: calc(-1 * var(--space-3));
 }
 
 /* --- Result panels -------------------------------------------------------- */
 
+.result {
+  animation: enter var(--enter) var(--ease-out);
+}
 .result-ok {
   border-left: 3px solid var(--good);
 }
@@ -748,18 +1082,74 @@ button.secondary {
   font-size: 1.05rem;
 }
 .result p {
-  margin: 0;
   font-size: 0.9rem;
 }
 
+/* --- Responsive and motion ------------------------------------------------ */
+
 @media (max-width: 40rem) {
+  /* Two rows instead of three: brand and session share the first, the tabs
+   * scroll sideways in the second. The bar is sticky, so every row it wraps
+   * into is a row of content the operator loses on a phone. */
   .topbar {
-    gap: 0.75rem;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-4);
+  }
+  .session {
+    margin-left: auto;
+  }
+  .tabs {
+    order: 3;
+    width: 100%;
+    margin: 0 calc(-1 * var(--space-4));
+    padding: 0 var(--space-4);
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tab {
+    flex-shrink: 0;
   }
   main {
-    padding: 1rem;
+    padding: var(--space-4);
+  }
+  .panel {
+    padding: var(--space-4);
   }
   .truncate {
     max-width: 10rem;
+  }
+  .filters label,
+  .filters input,
+  .filters select {
+    flex: 1 1 100%;
+  }
+  .login-card {
+    padding: var(--space-6);
+  }
+  .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .detail-grid dd {
+    margin-bottom: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .skeleton::after {
+    animation: none;
+  }
+  /* A spinner that stops is no longer a spinner; keep a static ring. */
+  .spinner {
+    border-right-color: currentColor;
+    opacity: 0.6;
   }
 }

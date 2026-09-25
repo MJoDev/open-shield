@@ -21,6 +21,7 @@ const PLOT_H = H - PAD.top - PAD.bottom;
 
 interface Props {
   series: Bucket[];
+  /** The window as a phrase that reads after "en": "la última hora". */
   window: string;
 }
 
@@ -39,7 +40,7 @@ export function TrafficChart({ series, window: windowLabel }: Props) {
   if (series.length === 0) {
     return (
       <div className="chart-empty">
-        Sin tráfico registrado en las últimas {windowLabel}.
+        Sin tráfico registrado en {windowLabel}.
       </div>
     );
   }
@@ -109,7 +110,7 @@ export function TrafficChart({ series, window: windowLabel }: Props) {
             ref={svgRef}
             viewBox={`0 0 ${W} ${H}`}
             role="img"
-            aria-label={`Tráfico permitido y bloqueado durante las últimas ${windowLabel}`}
+            aria-label={`Tráfico permitido y bloqueado en ${windowLabel}`}
             onMouseMove={onMove}
             onMouseLeave={() => setHover(null)}
           >

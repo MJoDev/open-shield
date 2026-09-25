@@ -6,39 +6,129 @@ import type {
   VerifyResult,
 } from "./types";
 
-/** Thrown for any non-2xx response, carrying the API's own error message. */
+/**
+ * Thrown for any failed request, carrying the API's own error message.
+ *
+ * `status` is the HTTP status, or 0 when no response arrived at all — the
+ * server did not answer in time (`timedOut`) or could not be reached.
+ */
 export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly timedOut = false,
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    // The session lives in an HttpOnly cookie, so it has to be sent explicitly
-    // — and it is never readable from here, which is the point.
-    credentials: "same-origin",
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
-    ...init,
-  });
+/** True for a request the caller cancelled itself; never worth showing. */
+export function isAbort(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
+}
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
+export interface RequestOptions {
+  /** Cancels the request, e.g. when the parameters it was made for changed. */
+  signal?: AbortSignal;
+  /** Overrides DEFAULT_TIMEOUT_MS for calls known to be slow. */
+  timeoutMs?: number;
+}
 
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      body && typeof body.error === "string"
-        ? body.error
-        : `La petición falló (${response.status})`;
-    throw new ApiError(message, response.status);
+// A spinner that never ends is worse than an error. Every read the dashboard
+// makes is a bounded query; fifteen seconds is far past a healthy answer and
+// short enough that an operator is not left staring at a dead screen.
+export const DEFAULT_TIMEOUT_MS = 15_000;
+
+// Walking the whole chain recomputes every hash, so it scales with the log.
+export const VERIFY_TIMEOUT_MS = 10 * 60_000;
+
+let onUnauthorized: (() => void) | null = null;
+
+/**
+ * Registers what happens when a signed-in call answers 401: the session
+ * expired or was revoked, and the only useful response is the sign-in screen.
+ * Sign-in and the initial session probe are excluded — a 401 there is an
+ * answer, not an expiry.
+ */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
+const UNAUTHORIZED_IS_AN_ANSWER = new Set(["/api/v1/login", "/api/v1/session"]);
+
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  options: RequestOptions = {},
+): Promise<T> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+
+  const forward = () => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  options.signal?.addEventListener("abort", forward);
+
+  try {
+    let response: Response;
+    try {
+      response = await fetch(path, {
+        // The session lives in an HttpOnly cookie, so it has to be sent
+        // explicitly — and it is never readable from here, which is the point.
+        credentials: "same-origin",
+        headers: init?.body
+          ? { "Content-Type": "application/json" }
+          : undefined,
+        ...init,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      throw translateTransportError(err, timedOut, options.timeoutMs);
+    }
+
+    if (response.status === 401 && !UNAUTHORIZED_IS_AN_ANSWER.has(path)) {
+      onUnauthorized?.();
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message =
+        body && typeof body.error === "string"
+          ? body.error
+          : `La petición falló (${response.status})`;
+      throw new ApiError(message, response.status);
+    }
+    return body as T;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", forward);
   }
-  return body as T;
+}
+
+function translateTransportError(
+  err: unknown,
+  timedOut: boolean,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): unknown {
+  if (timedOut) {
+    return new ApiError(
+      `sin respuesta tras ${Math.round(timeoutMs / 1000)} s`,
+      0,
+      true,
+    );
+  }
+  // A caller's own cancellation passes through untouched, so it can be told
+  // apart from a failure and ignored.
+  if (isAbort(err)) return err;
+  return new ApiError("no se pudo contactar con el servidor", 0);
 }
 
 function query(params: Record<string, string | number | undefined>): string {
@@ -59,22 +149,30 @@ export const api = {
       body: JSON.stringify({ user, password }),
     }),
 
-  logout: () => request<{ status: string }>("/api/v1/logout", { method: "POST" }),
+  logout: () =>
+    request<{ status: string }>("/api/v1/logout", { method: "POST" }),
 
-  events: (params: {
-    kind?: string;
-    verdict?: string;
-    ip?: string;
-    rule?: string;
-    limit?: number;
-    offset?: number;
-  }) => request<EventsPage>(`/api/v1/events${query(params)}`),
+  events: (
+    params: {
+      kind?: string;
+      verdict?: string;
+      ip?: string;
+      rule?: string;
+      limit?: number;
+      offset?: number;
+    },
+    options?: RequestOptions,
+  ) =>
+    request<EventsPage>(`/api/v1/events${query(params)}`, undefined, options),
 
-  stats: (window: string) =>
-    request<Stats>(`/api/v1/stats${query({ window })}`),
+  stats: (window: string, options?: RequestOptions) =>
+    request<Stats>(`/api/v1/stats${query({ window })}`, undefined, options),
 
-  verify: (params: { from?: string; to?: string }) =>
-    request<VerifyResult>(`/api/v1/audit/verify${query(params)}`),
+  verify: (params: { from?: string; to?: string }, options?: RequestOptions) =>
+    request<VerifyResult>(`/api/v1/audit/verify${query(params)}`, undefined, {
+      timeoutMs: VERIFY_TIMEOUT_MS,
+      ...options,
+    }),
 
   rules: () => request<{ rules: RuleConfig[] }>("/api/v1/rules"),
 

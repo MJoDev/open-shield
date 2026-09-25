@@ -173,4 +173,33 @@ describe("EventTable", () => {
     expect(container.querySelector("script")).toBeNull();
     expect(container.querySelector("img")).toBeNull();
   });
+
+  // A row that opens only on a mouse click locks keyboard users out of the
+  // hashes and the request ID — the forensic half of the table.
+  it("expands a row from the keyboard", async () => {
+    const user = userEvent.setup();
+    render(<EventTable entries={[traffic()]} />);
+
+    const row = screen.getByText("GET /buscar?q=zapatos").closest("tr")!;
+    expect(row).toHaveAttribute("aria-expanded", "false");
+
+    row.focus();
+    await user.keyboard("{Enter}");
+    expect(row).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("b".repeat(64))).toBeInTheDocument();
+
+    await user.keyboard(" ");
+    expect(screen.queryByText("b".repeat(64))).not.toBeInTheDocument();
+  });
+
+  it("offers the request id for copying without collapsing the row", async () => {
+    const user = userEvent.setup();
+    render(<EventTable entries={[traffic()]} />);
+
+    await user.click(screen.getByText("GET /buscar?q=zapatos"));
+    await user.click(screen.getByRole("button", { name: "Copiar ID de petición" }));
+
+    expect(screen.getByText("req-1")).toBeInTheDocument();
+    expect(await screen.findByText("Copiado")).toBeInTheDocument();
+  });
 });

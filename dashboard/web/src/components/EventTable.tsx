@@ -1,84 +1,128 @@
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { field, verdictOf, type AuditEntry } from "../types";
+import { CopyButton } from "./Feedback";
 
 interface Props {
   entries: AuditEntry[];
-  empty?: string;
+  empty?: ReactNode;
 }
+
+export const EVENT_COLUMNS = [
+  "Hora",
+  "Tipo",
+  "Origen",
+  "Petición",
+  "Resultado",
+];
 
 /** The audit log rendered as rows, with one expandable detail per entry. */
 export function EventTable({ entries, empty = "Sin registros." }: Props) {
   const [open, setOpen] = useState<string | null>(null);
 
   if (entries.length === 0) {
-    return <p className="muted">{empty}</p>;
+    return <div className="muted">{empty}</div>;
   }
 
   return (
-    <table className="data-table">
-      <thead>
-        <tr>
-          <th scope="col">Hora</th>
-          <th scope="col">Tipo</th>
-          <th scope="col">Origen</th>
-          <th scope="col">Petición</th>
-          <th scope="col">Resultado</th>
-        </tr>
-      </thead>
-      <tbody>
-        {entries.map((entry) => {
-          const verdict = verdictOf(entry);
-          const expanded = open === entry.id;
+    <div className="table-scroll">
+      <table className="data-table">
+        <thead>
+          <tr>
+            {EVENT_COLUMNS.map((column) => (
+              <th key={column} scope="col">
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((entry) => {
+            const verdict = verdictOf(entry);
+            const expanded = open === entry.id;
+            const toggle = () => setOpen(expanded ? null : entry.id);
 
-          return (
-            <Fragment key={entry.id}>
-              <tr
-                className="row-clickable"
-                onClick={() => setOpen(expanded ? null : entry.id)}
-              >
-                <td className="num">{formatTime(entry.timestamp)}</td>
-                <td>
-                  <KindBadge kind={entry.kind} />
-                </td>
-                <td className="num">{field(entry, "ip") || "—"}</td>
-                <td className="truncate" title={requestLine(entry)}>
-                  {requestLine(entry)}
-                </td>
-                <td>
-                  {verdict ? (
-                    <VerdictBadge verdict={verdict} rule={field(entry, "rule")} />
-                  ) : (
-                    <span className="muted">{field(entry, "action") || "—"}</span>
-                  )}
-                </td>
-              </tr>
-              {expanded && (
-                <tr className="row-detail">
-                  <td colSpan={5}>
-                    <dl className="detail-grid">
-                      <dt>ID de petición</dt>
-                      <dd className="mono">{entry.request_id || "—"}</dd>
-                      <dt>Entrada</dt>
-                      <dd className="mono">{entry.id}</dd>
-                      <dt>Hash</dt>
-                      <dd className="mono break">{entry.hash}</dd>
-                      <dt>Hash anterior</dt>
-                      <dd className="mono break">{entry.prev_hash}</dd>
-                      <dt>Contenido</dt>
-                      <dd>
-                        <pre className="payload">
-                          {JSON.stringify(entry.payload, null, 2)}
-                        </pre>
-                      </dd>
-                    </dl>
+            return (
+              <Fragment key={entry.id}>
+                {/* The row is the target, so it also has to be reachable and
+                  operable from the keyboard, and say whether it is open. */}
+                <tr
+                  className={
+                    expanded ? "row-clickable row-expanded" : "row-clickable"
+                  }
+                  tabIndex={0}
+                  aria-expanded={expanded}
+                  onClick={toggle}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      toggle();
+                    }
+                  }}
+                >
+                  <td className="num">{formatTime(entry.timestamp)}</td>
+                  <td>
+                    <KindBadge kind={entry.kind} />
+                  </td>
+                  <td className="num">{field(entry, "ip") || "—"}</td>
+                  <td className="truncate" title={requestLine(entry)}>
+                    {requestLine(entry)}
+                  </td>
+                  <td>
+                    {verdict ? (
+                      <VerdictBadge
+                        verdict={verdict}
+                        rule={field(entry, "rule")}
+                      />
+                    ) : (
+                      <span className="muted">
+                        {field(entry, "action") || "—"}
+                      </span>
+                    )}
                   </td>
                 </tr>
-              )}
-            </Fragment>
-          );
-        })}
-      </tbody>
-    </table>
+                {expanded && (
+                  <tr className="row-detail">
+                    <td colSpan={5}>
+                      <dl className="detail-grid">
+                        <dt>ID de petición</dt>
+                        <dd>
+                          {entry.request_id ? (
+                            <span className="copyable">
+                              <span className="mono break">
+                                {entry.request_id}
+                              </span>
+                              <CopyButton
+                                value={entry.request_id}
+                                label="Copiar ID de petición"
+                              />
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </dd>
+                        <dt>Entrada</dt>
+                        <dd className="mono">{entry.id}</dd>
+                        <dt>Hash</dt>
+                        <dd className="mono break">{entry.hash}</dd>
+                        <dt>Hash anterior</dt>
+                        <dd className="mono break">{entry.prev_hash}</dd>
+                        <dt>Contenido</dt>
+                        <dd>
+                          <pre className="payload">
+                            {JSON.stringify(entry.payload, null, 2)}
+                          </pre>
+                        </dd>
+                      </dl>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

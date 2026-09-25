@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { api, ApiError } from "./api";
+import { api, ApiError, setUnauthorizedHandler } from "./api";
+import { ErrorBanner } from "./components/Feedback";
+import { describeError, type Problem } from "./errors";
+import { useDelayedFlag } from "./hooks";
 import { Events } from "./views/Events";
 import { Forensics } from "./views/Forensics";
 import { Live } from "./views/Live";
@@ -18,6 +21,13 @@ export function App() {
   const [user, setUser] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
   const [tab, setTab] = useState<Tab>("live");
+  // Views stay mounted once visited. Unmounting on every tab switch threw
+  // away the live feed's buffer and the last page of every view, so coming
+  // back meant a skeleton and an empty feed for data that was just there.
+  const [visited, setVisited] = useState<ReadonlySet<Tab>>(new Set(["live"]));
+  const [expired, setExpired] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const showBoot = useDelayedFlag(checking);
 
   useEffect(() => {
     api
@@ -27,12 +37,42 @@ export function App() {
       .finally(() => setChecking(false));
   }, []);
 
+  // Any signed-in call that answers 401 means the session is gone. The
+  // screens would otherwise each show a raw "no session" error; the only
+  // useful answer is the sign-in form, saying why it is back.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setExpired(true);
+      setUser(null);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
   if (checking) {
-    return <div className="boot">Cargando…</div>;
+    // Under the indicator delay the check is invisible; past it, the brand
+    // mark says what is loading rather than a bare "Cargando…".
+    return (
+      <div className="boot" aria-busy="true">
+        {showBoot && (
+          <div className="boot-mark" role="status">
+            <ShieldMark />
+            <span>Comprobando la sesión…</span>
+          </div>
+        )}
+      </div>
+    );
   }
 
   if (!user) {
-    return <Login onSignedIn={setUser} />;
+    return (
+      <Login
+        expired={expired}
+        onSignedIn={(name) => {
+          setExpired(false);
+          setUser(name);
+        }}
+      />
+    );
   }
 
   return (
@@ -49,7 +89,10 @@ export function App() {
               key={t.id}
               type="button"
               className={tab === t.id ? "tab tab-active" : "tab"}
-              onClick={() => setTab(t.id)}
+              onClick={() => {
+                setTab(t.id);
+                setVisited((current) => new Set(current).add(t.id));
+              }}
               aria-current={tab === t.id ? "page" : undefined}
             >
               {t.label}
@@ -62,30 +105,56 @@ export function App() {
           <button
             type="button"
             className="link-button"
+            disabled={leaving}
+            aria-busy={leaving}
             onClick={async () => {
+              setLeaving(true);
               await api.logout().catch(() => undefined);
+              setLeaving(false);
               setUser(null);
             }}
           >
-            Salir
+            {leaving ? "Saliendo…" : "Salir"}
           </button>
         </div>
       </header>
 
       <main>
-        {tab === "live" && <Live />}
-        {tab === "events" && <Events />}
-        {tab === "rules" && <Rules />}
-        {tab === "forensics" && <Forensics />}
+        {visited.has("live") && (
+          <div hidden={tab !== "live"}>
+            <Live />
+          </div>
+        )}
+        {visited.has("events") && (
+          <div hidden={tab !== "events"}>
+            <Events />
+          </div>
+        )}
+        {visited.has("rules") && (
+          <div hidden={tab !== "rules"}>
+            <Rules />
+          </div>
+        )}
+        {visited.has("forensics") && (
+          <div hidden={tab !== "forensics"}>
+            <Forensics />
+          </div>
+        )}
       </main>
     </div>
   );
 }
 
-function Login({ onSignedIn }: { onSignedIn: (user: string) => void }) {
+function Login({
+  expired,
+  onSignedIn,
+}: {
+  expired: boolean;
+  onSignedIn: (user: string) => void;
+}) {
   const [user, setUser] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Problem | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (event: React.FormEvent) => {
@@ -97,12 +166,20 @@ function Login({ onSignedIn }: { onSignedIn: (user: string) => void }) {
       onSignedIn(session.user);
     } catch (err) {
       // The API answers the same way for a wrong user and a wrong password, so
-      // there is nothing here to distinguish between them either.
-      setError(
-        err instanceof ApiError && err.status === 429
-          ? err.message
-          : "Usuario o contraseña incorrectos.",
-      );
+      // there is nothing here to distinguish between them either. Only a 401
+      // means that, though: a server that is down or timing out must not be
+      // reported as a mistyped password.
+      if (err instanceof ApiError && err.status === 401) {
+        setError({ title: "Usuario o contraseña incorrectos." });
+      } else if (err instanceof ApiError && err.status === 429) {
+        setError({
+          title:
+            "Demasiados intentos fallidos. Espera unos minutos antes de volver a probar.",
+          detail: `${err.message} (HTTP 429)`,
+        });
+      } else {
+        setError(describeError(err, "No se pudo iniciar sesión."));
+      }
     } finally {
       setBusy(false);
     }
@@ -116,6 +193,12 @@ function Login({ onSignedIn }: { onSignedIn: (user: string) => void }) {
           <span>open-shield</span>
         </div>
         <p className="muted">Panel de administración</p>
+
+        {expired && !error && (
+          <p className="note" role="status">
+            Tu sesión expiró. Vuelve a entrar para continuar.
+          </p>
+        )}
 
         <label>
           Usuario
@@ -139,10 +222,17 @@ function Login({ onSignedIn }: { onSignedIn: (user: string) => void }) {
           />
         </label>
 
-        {error && <p className="error-banner">{error}</p>}
+        {error && <ErrorBanner problem={error} />}
 
-        <button type="submit" disabled={busy}>
-          {busy ? "Entrando…" : "Entrar"}
+        <button type="submit" disabled={busy} aria-busy={busy}>
+          {busy ? (
+            <>
+              <span className="spinner" aria-hidden="true" />
+              Entrando…
+            </>
+          ) : (
+            "Entrar"
+          )}
         </button>
       </form>
     </div>

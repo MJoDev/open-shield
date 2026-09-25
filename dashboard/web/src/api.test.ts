@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { api, ApiError } from "./api";
+import { api, ApiError, isAbort, setUnauthorizedHandler } from "./api";
 
 // This module is the whole surface between the dashboard and its API. Two
 // things about it are load-bearing and neither is obvious from reading it: the
@@ -125,4 +125,82 @@ describe("api", () => {
     const [, getInit] = withoutBody.mock.calls[0] as unknown as [string, RequestInit];
     expect(getInit.headers).toBeUndefined();
   });
+
+  // A request the server never answers must end. A spinner that never stops
+  // is indistinguishable from a working one, and hides the outage.
+  it("gives up after the timeout and says so", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", hangingFetch());
+
+    const call = api.rules();
+    const assertion = expect(call).rejects.toMatchObject({
+      status: 0,
+      timedOut: true,
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+    await assertion;
+    vi.useRealTimers();
+  });
+
+  it("passes a caller's own cancellation through as an abort", async () => {
+    vi.stubGlobal("fetch", hangingFetch());
+    const controller = new AbortController();
+
+    const call = api.events({}, { signal: controller.signal });
+    controller.abort();
+
+    // An abort is how a view drops a stale request; it must be recognisable
+    // so the view can ignore it rather than report it as a failure.
+    const err = await call.catch((e: unknown) => e);
+    expect(isAbort(err)).toBe(true);
+  });
+
+  it("reports an unreachable server as status 0, not as a thrown TypeError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+
+    await expect(api.rules()).rejects.toMatchObject({ status: 0, timedOut: false });
+  });
+
+  // An expired session must send the operator to the sign-in screen from
+  // anywhere, instead of each screen showing "no session".
+  it("reports an expired session on a signed-in call", async () => {
+    const expired = vi.fn();
+    setUnauthorizedHandler(expired);
+    stubFetch(401, { error: "no session" });
+
+    await expect(api.rules()).rejects.toThrow(ApiError);
+    expect(expired).toHaveBeenCalledOnce();
+    setUnauthorizedHandler(null);
+  });
+
+  // On these two a 401 is the answer itself — wrong password, or not signed in
+  // yet — and treating it as an expiry would show "session expired" to
+  // someone who never had one.
+  it("does not treat a failed sign-in or session probe as an expiry", async () => {
+    const expired = vi.fn();
+    setUnauthorizedHandler(expired);
+    stubFetch(401, { error: "invalid credentials" });
+
+    await expect(api.login("admin", "guess")).rejects.toThrow();
+    await expect(api.session()).rejects.toThrow();
+    expect(expired).not.toHaveBeenCalled();
+    setUnauthorizedHandler(null);
+  });
 });
+
+/** A fetch that never answers, but honours its abort signal like the real one. */
+function hangingFetch() {
+  return vi.fn(
+    (_url: string, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("The operation was aborted.", "AbortError")),
+        );
+      }),
+  );
+}
