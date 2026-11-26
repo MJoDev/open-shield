@@ -162,7 +162,7 @@ OS_TRUSTED_PROXY=100.64.0.0/10
 más: es la dirección contra la que cuenta el limitador de intentos de acceso, y
 la que queda registrada como autora de cada cambio administrativo sellado en la
 cadena de auditoría. Sin definir, el dashboard usa la dirección del par, que
-detrás del borde es la misma para todo el mundo — diez intentos fallidos desde
+detrás del borde es la misma para todo el mundo — cinco intentos fallidos desde
 cualquier sitio dejan fuera a todos. Demasiado amplia, el cliente se nombra a sí
 mismo y el limitador deja de existir.
 

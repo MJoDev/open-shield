@@ -154,7 +154,7 @@ OS_TRUSTED_PROXY=100.64.0.0/10
 for one more: it is the address the sign-in throttle counts against, and the
 author recorded on every administrative change sealed into the audit chain. Left
 unset the dashboard uses the peer address, which behind the edge is the same for
-everyone — ten failed sign-ins from anywhere lock out everyone. Set too wide, a
+everyone — five failed sign-ins from anywhere lock out everyone. Set too wide, a
 client names itself and the throttle stops existing.
 
 `OS_SECURE_COOKIES=true` is correct here and only here: the platform serves this
