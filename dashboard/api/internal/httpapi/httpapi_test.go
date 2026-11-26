@@ -378,26 +378,27 @@ func TestLoginRejectsBadCredentials(t *testing.T) {
 func TestLoginThrottlesRepeatedFailures(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 
-	const limit = 10
-	throttled := false
-	for i := 0; i < limit+5; i++ {
+	// Exactly loginMaxFailures wrong guesses are answered; the next is refused.
+	for i := 0; i < loginMaxFailures; i++ {
 		resp := h.do(t, http.MethodPost, "/api/v1/login",
 			strings.NewReader(`{"user":"admin","password":"guess"}`))
 		status := resp.StatusCode
 		resp.Body.Close()
 
-		if status == http.StatusTooManyRequests {
-			throttled = true
-			break
+		if status != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: status = %d, want 401 before the limit", i+1, status)
 		}
 	}
-	if !throttled {
-		t.Fatalf("still answering after %d failed attempts, want 429", limit+5)
+	resp := h.do(t, http.MethodPost, "/api/v1/login",
+		strings.NewReader(`{"user":"admin","password":"guess"}`))
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("status = %d after %d failed attempts, want 429", resp.StatusCode, loginMaxFailures)
 	}
 
 	// The throttle must survive a correct password too, or an attacker simply
 	// keeps guessing past it.
-	resp := h.do(t, http.MethodPost, "/api/v1/login",
+	resp = h.do(t, http.MethodPost, "/api/v1/login",
 		strings.NewReader(fmt.Sprintf(`{"user":%q,"password":%q}`, testUser, testPassword)))
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusTooManyRequests {
@@ -410,14 +411,14 @@ func TestLoginThrottlesRepeatedFailures(t *testing.T) {
 func TestASuccessfulLoginClearsTheThrottle(t *testing.T) {
 	h := newHarness(t, harnessOptions{})
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < loginMaxFailures-1; i++ {
 		resp := h.do(t, http.MethodPost, "/api/v1/login",
 			strings.NewReader(`{"user":"admin","password":"guess"}`))
 		resp.Body.Close()
 	}
 	h.signIn(t)
 
-	for i := 0; i < 8; i++ {
+	for i := 0; i < loginMaxFailures; i++ {
 		resp := h.do(t, http.MethodPost, "/api/v1/login",
 			strings.NewReader(`{"user":"admin","password":"guess"}`))
 		status := resp.StatusCode

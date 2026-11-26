@@ -20,6 +20,15 @@ import (
 	"github.com/open-shield/open-shield/internal/rulestore"
 )
 
+// Sign-in throttle: failed attempts allowed per source address within the
+// window before the endpoint answers 429. Five is enough for an operator who
+// mistypes and low enough that a single address can try at most 480 passwords
+// a day; a successful sign-in clears the counter.
+const (
+	loginMaxFailures = 5
+	loginWindow      = 15 * time.Minute
+)
+
 // Server holds the dashboard's dependencies.
 type Server struct {
 	repo      audit.Repository
@@ -69,7 +78,7 @@ func New(opts Options) *Server {
 		spa:       opts.SPA,
 		log:       opts.Logger,
 		version:   opts.Version,
-		logins:    newLoginLimiter(10, 15*time.Minute),
+		logins:    newLoginLimiter(loginMaxFailures, loginWindow),
 		trusted:   trustedProxies(opts.TrustedProxies),
 	}
 }

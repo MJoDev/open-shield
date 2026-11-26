@@ -14,7 +14,7 @@ COPY dashboard/web/ ./
 RUN npm run build
 
 # --- 2. Build the Go binary with the application embedded --------------------
-FROM golang:1.25-alpine AS build
+FROM golang:1.26-alpine AS build
 
 WORKDIR /src
 

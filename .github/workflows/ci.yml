@@ -33,7 +33,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.25"
+  GO_VERSION: "1.26"
   NODE_VERSION: "22"
 
 jobs:
@@ -64,7 +64,7 @@ jobs:
 
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.6.2
+          version: v2.15.0
           args: --timeout 5m
 
   unit:
@@ -102,7 +102,7 @@ jobs:
 
       - name: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
           govulncheck ./...
 
   integration:
