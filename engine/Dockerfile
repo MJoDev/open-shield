@@ -2,7 +2,7 @@
 #
 # The build context is the repository root: engine and dashboard share one Go
 # module, so the whole tree has to be visible to the compiler.
-FROM golang:1.25-alpine AS build
+FROM golang:1.26-alpine AS build
 
 WORKDIR /src
 

@@ -14,7 +14,7 @@ COMPOSE_DEMO  ?= $(COMPOSE) -f deploy/docker-compose.quickstart.yml
 COMPOSE_E2E   ?= $(COMPOSE_DEMO) -f deploy/docker-compose.e2e.yml
 COMPOSE_LOAD  ?= $(COMPOSE_DEMO) -f deploy/docker-compose.load.yml
 COMPOSE_DEPS  ?= docker compose -f deploy/docker-compose.test.yml
-GO_IMAGE      ?= golang:1.25
+GO_IMAGE      ?= golang:1.26
 GO_RUN         = docker run --rm -v "$(CURDIR):/src" -w /src -v open-shield-gomod:/go/pkg/mod $(GO_IMAGE)
 
 # The compose project name of the stack, which is also the network k6 joins.
@@ -190,12 +190,12 @@ lint: ## gofmt, go vet y golangci-lint
 	$(GO_RUN) sh -c 'test -z "$$(gofmt -l .)" || (echo "Sin formatear:"; gofmt -l .; exit 1)'
 	$(GO_RUN) go vet ./...
 	docker run --rm -v "$(CURDIR):/src" -w /src \
-		-v open-shield-golangci:/root/.cache golangci/golangci-lint:v2.6.2 \
+		-v open-shield-golangci:/root/.cache golangci/golangci-lint:v2.15.0 \
 		golangci-lint run --timeout 5m
 
 .PHONY: vuln
 vuln: ## Busca CVEs conocidos en las dependencias
-	$(GO_RUN) sh -c "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && govulncheck ./..."
+	$(GO_RUN) sh -c "go install golang.org/x/vuln/cmd/govulncheck@v1.10.0 && govulncheck ./..."
 
 # --- Verificación ------------------------------------------------------------
 
