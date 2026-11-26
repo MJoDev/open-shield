@@ -136,6 +136,10 @@ func blockStatus(rule Rule) int {
 	return http.StatusForbidden
 }
 
+// millisSince measures at nanosecond resolution. Truncating to microseconds
+// first reported an evaluation that finished inside one microsecond — an empty
+// or fully disabled chain on a fast machine — as exactly 0 ms, which reads as
+// "not measured" rather than "fast" in the audit record (§6.1).
 func millisSince(start time.Time) float64 {
-	return float64(time.Since(start).Microseconds()) / 1000.0
+	return float64(time.Since(start).Nanoseconds()) / 1e6
 }
