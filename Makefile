@@ -195,7 +195,7 @@ lint: ## gofmt, go vet y golangci-lint
 
 .PHONY: vuln
 vuln: ## Busca CVEs conocidos en las dependencias
-	$(GO_RUN) sh -c "go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./..."
+	$(GO_RUN) sh -c "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && govulncheck ./..."
 
 # --- Verificación ------------------------------------------------------------
 
