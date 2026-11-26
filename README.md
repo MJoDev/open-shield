@@ -243,6 +243,10 @@ rather than a paragraph.
   how to run it, and how CI gates a pull request
 - [Filtering coverage findings](docs/filtering-coverage-findings.md) —
   measured evasion gaps in the rule chain and what v1.2 has to resolve
+- [Deploying on Railway](docs/deploy-railway.md) — the worked example for a
+  managed platform behind an edge
+- [Platform deployment plan](docs/platform-deployment-plan.md) — which
+  platforms can host the stack, and the phases back to a one-step install
 - [Diagrams](docs/diagrams/) — PlantUML sources for the architecture figures
 
 Every document has a Spanish translation beside it, suffixed `.es.md`.

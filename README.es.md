@@ -243,6 +243,10 @@ requisito es un gate y no un párrafo.
   nivel, cómo ejecutarlo y cómo bloquea un pull request
 - [Hallazgos de cobertura de filtrado](docs/filtering-coverage-findings.es.md) —
   huecos de evasión medidos en la cadena de reglas y qué debe resolver la v1.2
+- [Despliegue en Railway](docs/deploy-railway.es.md) — el ejemplo trabajado
+  de una plataforma gestionada detrás de un borde
+- [Plan de despliegue en plataformas](docs/platform-deployment-plan.es.md) — qué
+  plataformas pueden alojar el stack, y las fases para volver a instalar en un paso
 - [Diagramas](docs/diagrams/) — fuentes PlantUML de las figuras de arquitectura
   (en inglés)
 
